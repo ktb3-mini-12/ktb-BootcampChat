@@ -19,8 +19,7 @@ public class PageRequest {
 
     public boolean isValidSortField() {
         return "createdAt".equals(sortField) ||
-               "name".equals(sortField) ||
-               "participantsCount".equals(sortField);
+               "name".equals(sortField);
     }
 
     public boolean isValidSortOrder() {
