@@ -15,6 +15,8 @@ import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import org.springframework.scheduling.TaskScheduler;
+import java.time.Instant;
 
 import static com.ktb.chatapp.websocket.socketio.SocketIOEvents.*;
 
@@ -33,6 +35,7 @@ public class ConnectionLoginHandler {
     private final UserRooms userRooms;
     private final RoomJoinHandler roomJoinHandler;
     private final RoomLeaveHandler roomLeaveHandler;
+    private final TaskScheduler taskScheduler;
 
     public ConnectionLoginHandler(
             SocketIOServer socketIOServer,
@@ -40,12 +43,14 @@ public class ConnectionLoginHandler {
             UserRooms userRooms,
             RoomJoinHandler roomJoinHandler,
             RoomLeaveHandler roomLeaveHandler,
-            MeterRegistry meterRegistry) {
+            MeterRegistry meterRegistry,
+            TaskScheduler taskScheduler) {
         this.socketIOServer = socketIOServer;
         this.connectedUsers = connectedUsers;
         this.userRooms = userRooms;
         this.roomJoinHandler = roomJoinHandler;
         this.roomLeaveHandler = roomLeaveHandler;
+        this.taskScheduler = taskScheduler;
 
         // Register gauge metric for concurrent users
         Gauge.builder("socketio.concurrent.users", connectedUsers::size)
@@ -157,18 +162,17 @@ public class ConnectionLoginHandler {
                 "ipAddress", client.getRemoteAddress().toString(),
                 "timestamp", System.currentTimeMillis()
         ));
-        
-        new Thread(() -> {
+
+        taskScheduler.schedule(() -> {
             try {
-                Thread.sleep(Duration.ofSeconds(10));
                 existingClient.sendEvent(SESSION_ENDED, Map.of(
                         "reason", "duplicate_login",
                         "message", "다른 기기에서 로그인하여 현재 세션이 종료되었습니다."
                 ));
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.error("Error in duplicate login notification thread", e);
+            } catch (Exception e) {
+                // 스케줄러 스레드 안에서 발생한 예외 로깅
+                log.error("Error sending session ended event for user {}", userId, e);
             }
-        }).start();
+        }, Instant.now().plusSeconds(10));
     }
 }
