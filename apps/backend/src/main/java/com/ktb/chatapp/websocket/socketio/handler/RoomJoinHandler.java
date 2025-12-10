@@ -109,9 +109,7 @@ public class RoomJoinHandler {
                     .map(UserResponse::from)
                     .toList();
             
-            JoinRoomSuccessResponse response = JoinRoomSuccessResponse.builder()
-                .roomId(roomId)
-                .build();
+            JoinRoomSuccessResponse response = new JoinRoomSuccessResponse(roomId);
 
             client.sendEvent(JOIN_ROOM_SUCCESS, response);
 

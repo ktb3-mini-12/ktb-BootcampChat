@@ -70,9 +70,7 @@ public class RoomController {
         } catch (Exception e) {
             log.error("Health check 에러", e);
 
-            HealthResponse errorResponse = HealthResponse.builder()
-                .success(false)
-                .build();
+            HealthResponse errorResponse = new HealthResponse(false, null, null, null);
 
             return ResponseEntity
                 .status(503)
@@ -101,20 +99,20 @@ public class RoomController {
             @Parameter(description = "페이지 크기 (최대 50)", example = "10") @RequestParam(defaultValue = "10") int pageSize,
             @Parameter(description = "정렬 필드", example = "createdAt") @RequestParam(defaultValue = "createdAt") String sortField,
             @Parameter(description = "정렬 순서 (asc/desc)", example = "desc") @RequestParam(defaultValue = "desc") String sortOrder,
-            @Parameter(description = "검색어 (채팅방 이름)", example = "프로젝트") @RequestParam(required = false) String search,
-            Principal principal) {
+            @Parameter(description = "검색어 (채팅방 이름)", example = "프로젝트") @RequestParam(required = false) String search) {
 
         try {
             // PageRequest DTO 생성
-            PageRequest pageRequest = new PageRequest();
-            pageRequest.setPage(Math.max(0, page));
-            pageRequest.setPageSize(Math.min(Math.max(1, pageSize), 50));
-            pageRequest.setSortField(sortField);
-            pageRequest.setSortOrder(sortOrder);
-            pageRequest.setSearch(search);
+            PageRequest pageRequest = new PageRequest(
+                Math.max(0, page),
+                Math.min(Math.max(1, pageSize), 50),
+                sortField,
+                sortOrder,
+                search
+            );
 
             // 서비스에서 페이지네이션 처리
-            RoomsResponse response = roomService.getAllRoomsWithPagination(pageRequest, principal.getName());
+            RoomsResponse response = roomService.getAllRoomsWithPagination(pageRequest);
 
             // 캐시 설정
             return ResponseEntity.ok()
@@ -159,14 +157,14 @@ public class RoomController {
     @PostMapping
     public ResponseEntity<?> createRoom(@Valid @RequestBody CreateRoomRequest createRoomRequest, Principal principal) {
         try {
-            if (createRoomRequest.getName() == null || createRoomRequest.getName().trim().isEmpty()) {
+            if (createRoomRequest.name() == null || createRoomRequest.name().trim().isEmpty()) {
                 return ResponseEntity.status(400).body(
                     StandardResponse.error("방 이름은 필수입니다.")
                 );
             }
 
             Room savedRoom = roomService.createRoom(createRoomRequest, principal.getName());
-            RoomResponse roomResponse = mapToRoomResponse(savedRoom, principal.getName());
+            RoomResponse roomResponse = mapToRoomResponse(savedRoom);
 
             return ResponseEntity.status(201).body(
                 Map.of(
@@ -202,7 +200,7 @@ public class RoomController {
             content = @Content(schema = @Schema(implementation = StandardResponse.class)))
     })
     @GetMapping("/{roomId}")
-    public ResponseEntity<?> getRoomById(@Parameter(description = "채팅방 ID", example = "60d5ec49f1b2c8b9e8c4f2a1") @PathVariable String roomId, Principal principal) {
+    public ResponseEntity<?> getRoomById(@Parameter(description = "채팅방 ID", example = "60d5ec49f1b2c8b9e8c4f2a1") @PathVariable String roomId) {
         try {
             Optional<Room> roomOpt = roomService.findRoomById(roomId);
             if (roomOpt.isEmpty()) {
@@ -212,7 +210,7 @@ public class RoomController {
             }
 
             Room room = roomOpt.get();
-            RoomResponse roomResponse = mapToRoomResponse(room, principal.getName());
+            RoomResponse roomResponse = mapToRoomResponse(room);
 
             return ResponseEntity.ok(
                 Map.of(
@@ -249,14 +247,14 @@ public class RoomController {
             @RequestBody JoinRoomRequest joinRoomRequest,
             Principal principal) {
         try {
-            Room joinedRoom = roomService.joinRoom(roomId, joinRoomRequest.getPassword(), principal.getName());
+            Room joinedRoom = roomService.joinRoom(roomId, joinRoomRequest.password(), principal.getName());
 
             if (joinedRoom == null) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(StandardResponse.error("채팅방을 찾을 수 없습니다."));
             }
 
-            RoomResponse roomResponse = mapToRoomResponse(joinedRoom, principal.getName());
+            RoomResponse roomResponse = mapToRoomResponse(joinedRoom);
             
             return ResponseEntity.ok(
                 Map.of(
@@ -281,12 +279,11 @@ public class RoomController {
         }
     }
 
-    private RoomResponse mapToRoomResponse(Room room, String name) {
+    private RoomResponse mapToRoomResponse(Room room) {
         User creator = userRepository.findById(room.getCreator()).orElse(null);
         if (creator == null) {
             throw new RuntimeException("Creator not found for room " + room.getId());
         }
-        UserResponse creatorSummary = UserResponse.from(creator);
         List<UserResponse> participantSummaries = room.getParticipantIds()
                 .stream()
                 .map(userRepository::findById).peek(optUser -> {
@@ -298,22 +295,18 @@ public class RoomController {
                 .map(Optional::get)
                 .map(UserResponse::from)
                 .toList();
-
-        boolean isCreator = room.getCreator().equals(name);
-
+		
         // 최근 10분간 메시지 수 조회
         LocalDateTime tenMinutesAgo = LocalDateTime.now().minusMinutes(10);
         long recentMessageCount = messageRepository.countRecentMessagesByRoomId(room.getId(), tenMinutesAgo);
 
-        return RoomResponse.builder()
-                .id(room.getId())
-                .name(room.getName())
-                .hasPassword(room.isHasPassword())
-                .creator(creatorSummary)
-                .participants(participantSummaries)
-                .createdAtDateTime(room.getCreatedAt() != null ? room.getCreatedAt() : LocalDateTime.now())
-                .isCreator(isCreator)
-                .recentMessageCount((int) recentMessageCount)
-                .build();
+        return new RoomResponse(
+                room.getId(),
+                room.getName(),
+                room.isHasPassword(),
+                participantSummaries,
+                room.getCreatedAt() != null ? room.getCreatedAt() : LocalDateTime.now(),
+                (int) recentMessageCount
+        );
     }
 }

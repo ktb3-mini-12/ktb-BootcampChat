@@ -98,8 +98,8 @@ class MessageLoaderIntegrationTest {
         FetchMessagesRequest initialRequest = new FetchMessagesRequest(roomId, 30, null);
         FetchMessagesResponse firstResponse = messageLoader.loadMessages(initialRequest, userId);
 
-        assertThat(firstResponse.getMessages()).hasSize(30);
-        assertThat(firstResponse.isHasMore()).isTrue();
+        assertThat(firstResponse.messages()).hasSize(30);
+        assertThat(firstResponse.hasMore()).isTrue();
 
         // 첫 번째 배치가 가장 오래된 30개 메시지인지 확인
         verifyMessageOrder(firstResponse);
@@ -109,8 +109,8 @@ class MessageLoaderIntegrationTest {
         FetchMessagesRequest secondRequest = new FetchMessagesRequest(roomId, 30, beforeSecond);
         FetchMessagesResponse secondResponse = messageLoader.loadMessages(secondRequest, userId);
 
-        assertThat(secondResponse.getMessages()).hasSize(30);
-        assertThat(secondResponse.isHasMore()).isTrue();
+        assertThat(secondResponse.messages()).hasSize(30);
+        assertThat(secondResponse.hasMore()).isTrue();
 
         // 두 번째 배치가 그 다음 30개 메시지인지 확인
         verifyMessageOrder(secondResponse);
@@ -120,8 +120,8 @@ class MessageLoaderIntegrationTest {
         FetchMessagesRequest thirdRequest = new FetchMessagesRequest(roomId, 30, beforeThird);
         FetchMessagesResponse thirdResponse = messageLoader.loadMessages(thirdRequest, userId);
 
-        assertThat(thirdResponse.getMessages()).hasSize(30);
-        assertThat(thirdResponse.isHasMore()).isTrue();
+        assertThat(thirdResponse.messages()).hasSize(30);
+        assertThat(thirdResponse.hasMore()).isTrue();
 
         verifyMessageOrder(thirdResponse);
 
@@ -130,17 +130,17 @@ class MessageLoaderIntegrationTest {
         FetchMessagesRequest fourthRequest = new FetchMessagesRequest(roomId, 30, beforeFourth);
         FetchMessagesResponse fourthResponse = messageLoader.loadMessages(fourthRequest, userId);
 
-        assertThat(fourthResponse.getMessages()).hasSize(10);
-        assertThat(fourthResponse.isHasMore()).isFalse();
+        assertThat(fourthResponse.messages()).hasSize(10);
+        assertThat(fourthResponse.hasMore()).isFalse();
 
         // 마지막 배치가 가장 최신 메시지인지 확인
         verifyMessageOrder(fourthResponse);
 
         // 전체 로드된 메시지 수 확인
-        int totalLoaded = firstResponse.getMessages().size()
-                + secondResponse.getMessages().size()
-                + thirdResponse.getMessages().size()
-                + fourthResponse.getMessages().size();
+        int totalLoaded = firstResponse.messages().size()
+                + secondResponse.messages().size()
+                + thirdResponse.messages().size()
+                + fourthResponse.messages().size();
         assertThat(totalLoaded).isEqualTo(100);
     }
 
@@ -156,8 +156,8 @@ class MessageLoaderIntegrationTest {
         FetchMessagesResponse response = messageLoader.loadMessages(request, userId);
 
         // Then: 20개만 반환되고 hasMore는 false
-        assertThat(response.getMessages()).hasSize(20);
-        assertThat(response.isHasMore()).isFalse();
+        assertThat(response.messages()).hasSize(20);
+        assertThat(response.hasMore()).isFalse();
     }
 
     @Test
@@ -174,8 +174,8 @@ class MessageLoaderIntegrationTest {
         FetchMessagesResponse response = messageLoader.loadMessages(request, userId);
 
         // Then: 빈 결과 반환
-        assertThat(response.getMessages()).isEmpty();
-        assertThat(response.isHasMore()).isFalse();
+        assertThat(response.messages()).isEmpty();
+        assertThat(response.hasMore()).isFalse();
     }
 
     private Message createAndSaveMessage() {
@@ -189,8 +189,8 @@ class MessageLoaderIntegrationTest {
     }
 
     private void verifyMessageOrder(FetchMessagesResponse response) {
-        List<Long> timestamps = response.getMessages().stream()
-                .map(MessageResponse::getTimestamp)
+        List<Long> timestamps = response.messages().stream()
+                .map(MessageResponse::timestamp)
                 .toList();
 
         // 오름차순 정렬 확인 (오래된 것 → 최신 것)

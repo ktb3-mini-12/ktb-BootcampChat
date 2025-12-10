@@ -46,11 +46,11 @@ public class MessageReadHandler {
                 return;
             }
 
-            if (data == null || data.getMessageIds() == null || data.getMessageIds().isEmpty()) {
+            if (data == null || data.messageIds() == null || data.messageIds().isEmpty()) {
                 return;
             }
             
-            String roomId = messageRepository.findById(data.getMessageIds().getFirst())
+            String roomId = messageRepository.findById(data.messageIds().getFirst())
                     .map(Message::getRoomId).orElse(null);
             
             if (roomId == null || roomId.isBlank()) {
@@ -70,9 +70,9 @@ public class MessageReadHandler {
                 return;
             }
             
-            messageReadStatusService.updateReadStatus(data.getMessageIds(), userId);
+            messageReadStatusService.updateReadStatus(data.messageIds(), userId);
 
-            MessagesReadResponse response = new MessagesReadResponse(userId, data.getMessageIds());
+            MessagesReadResponse response = new MessagesReadResponse(userId, data.messageIds());
 
             // Broadcast to room
             socketIOServer.getRoomOperations(roomId)
