@@ -1,0 +1,60 @@
+name: CD Frontend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/frontend/**'
+      - '.github/workflows/cd-frontend.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Create .env.production
+        run: |
+          echo "NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}" >> .env.production
+          echo "NEXT_PUBLIC_WS_URL=${{ secrets.NEXT_PUBLIC_WS_URL }}" >> .env.production
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Prepare standalone
+        run: |
+          cp -r .next/static .next/standalone/.next/
+          cp -r public .next/standalone/
+          cp restart.sh .next/standalone/
+          tar -czf build.tar.gz -C .next/standalone .
+
+      - name: Deploy to EC2
+        env:
+          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          HOST: ${{ secrets.FE_HOST }}
+        run: |
+          echo "$SSH_KEY" > key.pem
+          chmod 600 key.pem
+
+          scp -i key.pem -o StrictHostKeyChecking=no build.tar.gz ubuntu@$HOST:/tmp/
+
+          ssh -i key.pem -o StrictHostKeyChecking=no ubuntu@$HOST << 'EOF'
+            cd /home/ubuntu/ktb-chat-frontend
+            rm -rf .next server.js public package.json restart.sh
+            tar -xzf /tmp/build.tar.gz
+            chmod +x restart.sh
+            ./restart.sh
+            rm /tmp/build.tar.gz
+          EOF
+
+          rm key.pem

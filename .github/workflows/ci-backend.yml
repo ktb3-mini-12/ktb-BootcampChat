@@ -1,0 +1,25 @@
+name: CI Backend
+
+on:
+  pull_request:
+    paths:
+      - 'apps/backend/**'
+      - '.github/workflows/ci-backend.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - run: ./mvnw clean package -DskipTests
