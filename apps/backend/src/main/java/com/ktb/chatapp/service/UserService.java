@@ -29,7 +29,8 @@ public class UserService {
     private final UserRepository userRepository;
     private final FileService fileService;
 
-    @Value("${app.upload.dir:uploads}")
+    // LocalFileService와 동일한 설정 키 사용 (경로 불일치 방지)
+    @Value("${file.upload-dir:uploads}")
     private String uploadDir;
 
     @Value("${app.profile.image.max-size:5242880}") // 5MB
@@ -148,14 +149,16 @@ public class UserService {
      */
     private void deleteOldProfileImage(String profileImageUrl) {
         try {
-            if (profileImageUrl != null && profileImageUrl.startsWith("/uploads/")) {
-                // URL에서 파일명 추출
-                String filename = profileImageUrl.substring("/uploads/".length());
-                Path filePath = Paths.get(uploadDir, filename);
+            // LocalFileService의 URL 패턴(/api/uploads/)에 맞춰 경로 파싱 수정
+            String urlPrefix = "/api/uploads/";
+            if (profileImageUrl != null && profileImageUrl.startsWith(urlPrefix)) {
+                // URL에서 상대 경로 추출 (예: /api/uploads/profiles/image.jpg -> profiles/image.jpg)
+                String relativePath = profileImageUrl.substring(urlPrefix.length());
+                Path filePath = Paths.get(uploadDir).resolve(relativePath).normalize();
 
                 if (Files.exists(filePath)) {
                     Files.delete(filePath);
-                    log.info("기존 프로필 이미지 삭제 완료: {}", filename);
+                    log.info("기존 프로필 이미지 삭제 완료: {}", relativePath);
                 }
             }
         } catch (IOException e) {

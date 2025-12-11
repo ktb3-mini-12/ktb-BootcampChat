@@ -11,10 +11,9 @@ import com.ktb.chatapp.dto.UserResponse;
 import com.ktb.chatapp.model.*;
 import com.ktb.chatapp.repository.FileRepository;
 import com.ktb.chatapp.repository.MessageRepository;
-import com.ktb.chatapp.repository.RoomRepository;
-import com.ktb.chatapp.repository.UserRepository;
 import com.ktb.chatapp.util.BannedWordChecker;
 import com.ktb.chatapp.websocket.socketio.ai.AiService;
+import com.ktb.chatapp.service.CacheService;
 import com.ktb.chatapp.service.SessionService;
 import com.ktb.chatapp.service.SessionValidationResult;
 import com.ktb.chatapp.service.RateLimitService;
@@ -26,8 +25,8 @@ import io.micrometer.core.instrument.Timer;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
-
-import jakarta.annotation.PostConstruct;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -41,8 +40,7 @@ import static com.ktb.chatapp.websocket.socketio.SocketIOEvents.*;
 @RequiredArgsConstructor
 public class ChatMessageHandler {
 	private final SocketIOServer socketIOServer;
-	private final RoomRepository roomRepository;
-	private final UserRepository userRepository;
+	private final CacheService cacheService;
 	private final FileRepository fileRepository;
 	private final AiService aiService;
 	private final SessionService sessionService;
@@ -50,6 +48,10 @@ public class ChatMessageHandler {
 	private final RateLimitService rateLimitService;
 	private final MeterRegistry meterRegistry;
 	private final MessageRepository messageRepository;
+
+	// Metrics 캐시 (매번 등록하지 않고 재사용)
+	private final Map<String, Timer> timerCache = new ConcurrentHashMap<>();
+	private final Map<String, Counter> counterCache = new ConcurrentHashMap<>();
 	
 	private Timer processingSuccessTimer;
 	private Timer processingErrorTimer;
@@ -139,7 +141,8 @@ public class ChatMessageHandler {
 		}
 		
 		try {
-			User sender = userRepository.findById(socketUser.id()).orElse(null);
+			// 캐시 서비스를 통한 User 조회 (DB 부하 감소)
+			User sender = cacheService.findUserById(socketUser.id()).orElse(null);
 			if (sender == null) {
 				recordError("user_not_found");
 				client.sendEvent(ERROR, Map.of(
@@ -149,9 +152,10 @@ public class ChatMessageHandler {
 				timerSample.stop(processingErrorTimer);
 				return;
 			}
-			
+
 			String roomId = data.getRoom();
-			Room room = roomRepository.findById(roomId).orElse(null);
+			// 캐시 서비스를 통한 Room 조회 (DB 부하 감소)
+			Room room = cacheService.findRoomById(roomId).orElse(null);
 			if (room == null || !room.getParticipantIds().contains(socketUser.id())) {
 				recordError("room_access_denied");
 				client.sendEvent(ERROR, Map.of(
@@ -193,14 +197,22 @@ public class ChatMessageHandler {
 			// 브로드캐스트 먼저 실행 (실시간 응답 보장)
 			socketIOServer.getRoomOperations(roomId)
 					.sendEvent(MESSAGE, createMessageResponse(message, sender));
-			
-			// MongoDB에 저장
-			messageRepository.save(message);
-			
-			// AI 멘션 처리
+
+			// MongoDB에 비동기 저장 (Virtual Thread가 처리)
+			CompletableFuture.runAsync(() -> {
+				try {
+					messageRepository.save(message);
+				} catch (Exception e) {
+					log.error("Failed to save message asynchronously - messageId: {}, roomId: {}",
+							message.getId(), roomId, e);
+				}
+			});
+
+			// AI 멘션 처리 (이미 비동기)
 			aiService.handleAIMentions(roomId, socketUser.id(), messageContent);
-			
-			sessionService.updateLastActivity(socketUser.id());
+
+			// 세션 활동 업데이트 (비동기)
+			CompletableFuture.runAsync(() -> sessionService.updateLastActivity(socketUser.id()));
 			
 			// Record success metrics
 			recordMessageSuccess();
@@ -285,13 +297,37 @@ public class ChatMessageHandler {
 		);
 	}
 	
-	// Metrics helper methods
-	private void recordMessageSuccess() {
-		successCounter.increment();
+	// Metrics helper methods (캐싱으로 매번 등록하지 않음)
+	private Timer createTimer(String status, String messageType) {
+		String key = "timer:" + status + ":" + messageType;
+		return timerCache.computeIfAbsent(key, k ->
+				Timer.builder("socketio.messages.processing.time")
+						.description("Socket.IO message processing time")
+						.tag("status", status)
+						.tag("message_type", messageType)
+						.register(meterRegistry)
+		);
 	}
-	
+
+	private void recordMessageSuccess(String messageType) {
+		String key = "success:" + messageType;
+		counterCache.computeIfAbsent(key, k ->
+				Counter.builder("socketio.messages.total")
+						.description("Total Socket.IO messages processed")
+						.tag("status", "success")
+						.tag("message_type", messageType)
+						.register(meterRegistry)
+		).increment();
+	}
+
 	private void recordError(String errorType) {
-		errorCounter.increment();
+		String key = "error:" + errorType;
+		counterCache.computeIfAbsent(key, k ->
+				Counter.builder("socketio.messages.errors")
+						.description("Socket.IO message processing errors")
+						.tag("error_type", errorType)
+						.register(meterRegistry)
+		).increment();
 	}
 	
 	private FileResponse buildFileResponse(Message message) {

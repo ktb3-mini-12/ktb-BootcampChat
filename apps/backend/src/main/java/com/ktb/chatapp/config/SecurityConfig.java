@@ -3,9 +3,11 @@ package com.ktb.chatapp.config;
 import com.ktb.chatapp.security.CustomBearerTokenResolver;
 import com.ktb.chatapp.security.SessionAwareJwtAuthenticationConverter;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -30,7 +32,8 @@ public class SecurityConfig {
     private final CustomBearerTokenResolver bearerTokenResolver;
     private final SessionAwareJwtAuthenticationConverter jwtAuthenticationConverter;
 
-    private static final List<String> CORS_ALLOWED_ORIGINS = List.of("*");
+    @Value("${cors.allowed-origins:*}")
+    private String corsAllowedOrigins;
 
     private static final List<String> CORS_ALLOWED_HEADERS = List.of(
             "Content-Type",
@@ -94,7 +97,9 @@ public class SecurityConfig {
 
     private CorsConfiguration createCorsConfiguration() {
         CorsConfiguration config = new CorsConfiguration();
-        if (CORS_ALLOWED_ORIGINS.contains("*")) {
+        List<String> origins = Arrays.asList(corsAllowedOrigins.split(","));
+
+        if (origins.contains("*")) {
             log.warn("╔═══════════════════════════════════════════════════════════════════════════════╗");
             log.warn("║                           ⚠️  CORS 보안 경고  ⚠️                              ║");
             log.warn("╠═══════════════════════════════════════════════════════════════════════════════╣");
@@ -106,8 +111,11 @@ public class SecurityConfig {
             log.warn("║                                                                               ║");
             log.warn("║  💡 팀 도메인으로 CORS 설정하세요.         ║");
             log.warn("╚═══════════════════════════════════════════════════════════════════════════════╝");
+        } else {
+            log.info("CORS 허용 Origins: {}", origins);
         }
-        config.setAllowedOriginPatterns(CORS_ALLOWED_ORIGINS);
+
+        config.setAllowedOriginPatterns(origins);
         config.setAllowedMethods(CORS_ALLOWED_METHODS);
         config.setAllowedHeaders(CORS_ALLOWED_HEADERS);
         config.setExposedHeaders(CORS_EXPOSED_HEADERS);

@@ -156,8 +156,16 @@ start() {
         rm -f "$PID_FILE"
     fi
 
-    # Check if .env file exists
-    if [ ! -f ".env" ]; then
+    # Load .env file if exists
+    if [ -f ".env" ]; then
+        set -a
+        if source .env 2>/dev/null; then
+            log_info "Loaded environment variables from .env"
+        else
+            log_warn "Failed to parse .env file, continuing with existing environment"
+        fi
+        set +a
+    else
         log_warn ".env file not found"
         log_info "Application will use default configuration or environment variables"
     fi

@@ -3,7 +3,9 @@ package com.ktb.chatapp.service;
 import com.ktb.chatapp.model.Session;
 import com.ktb.chatapp.service.session.SessionStore;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.convert.DurationStyle;
@@ -19,6 +21,17 @@ public class SessionService {
     private final SessionStore sessionStore;
     public static final long SESSION_TTL_SEC = DurationStyle.detectAndParse(SESSION_TTL).getSeconds();
     private static final long SESSION_TIMEOUT = SESSION_TTL_SEC * 1000;
+    private static final long ACTIVITY_UPDATE_INTERVAL_MS = 60000; // 1분 동안은 DB 업데이트 건너뜀
+    private static final long VALIDATION_CACHE_TTL_MS = 30000; // 30초간 검증 결과 캐싱
+
+    // 세션 검증 결과 로컬 캐시 (부하 테스트 최적화)
+    private final Map<String, CachedValidation> validationCache = new ConcurrentHashMap<>();
+
+    private record CachedValidation(SessionValidationResult result, long cachedAt) {
+        boolean isExpired() {
+            return System.currentTimeMillis() - cachedAt > VALIDATION_CACHE_TTL_MS;
+        }
+    }
 
     private String generateSessionId() {
         return UUID.randomUUID().toString().replace("-", "");
@@ -74,8 +87,15 @@ public class SessionService {
                 return SessionValidationResult.invalid("INVALID_PARAMETERS", "유효하지 않은 세션 파라미터");
             }
 
+            // 캐시 확인 (30초간 유효한 검증 결과 재사용)
+            String cacheKey = userId + ":" + sessionId;
+            CachedValidation cached = validationCache.get(cacheKey);
+            if (cached != null && !cached.isExpired() && cached.result().isValid()) {
+                return cached.result();
+            }
+
             Session session = sessionStore.findByUserId(userId).orElse(null);
-            
+
             if (session == null) {
                 log.warn("No session found for userId: {}", userId);
                 return SessionValidationResult.invalid("INVALID_SESSION", "세션을 찾을 수 없습니다.");
@@ -91,15 +111,26 @@ public class SessionService {
             if (now - session.getLastActivity() > SESSION_TIMEOUT) {
                 log.warn("Session timed out for userId: {}, sessionId: {}", userId, sessionId);
                 removeSession(userId, sessionId);
+                validationCache.remove(cacheKey);
                 return SessionValidationResult.invalid("SESSION_EXPIRED", "세션이 만료되었습니다.");
             }
 
             // Update last activity
-            session.setLastActivity(now);
-            sessionStore.refreshExpiration(userId, SESSION_TTL_SEC);
+            // 성능 최적화: 매 요청마다 DB에 쓰지 않고, 일정 간격(예: 1분)으로만 업데이트
+            if (now - session.getLastActivity() > ACTIVITY_UPDATE_INTERVAL_MS) {
+                session.setLastActivity(now);
+                session.setExpiresAt(Instant.now().plusSeconds(SESSION_TTL_SEC));
+                session = sessionStore.save(session);
+                log.debug("Session activity updated for user: {}", userId);
+            }
 
             SessionData sessionData = toSessionData(session);
-            return SessionValidationResult.valid(sessionData);
+            SessionValidationResult result = SessionValidationResult.valid(sessionData);
+
+            // 유효한 결과 캐싱
+            validationCache.put(cacheKey, new CachedValidation(result, System.currentTimeMillis()));
+
+            return result;
 
         } catch (Exception e) {
             log.error("Session validation error for userId: {}, sessionId: {}", userId, sessionId, e);
@@ -122,9 +153,12 @@ public class SessionService {
 
     public void removeSession(String userId, String sessionId) {
         try {
+            // 캐시 무효화
             if (sessionId != null) {
+                validationCache.remove(userId + ":" + sessionId);
                 sessionStore.delete(userId, sessionId);
             } else {
+                evictUserFromCache(userId);
                 sessionStore.deleteAll(userId);
             }
         } catch (Exception e) {
@@ -135,11 +169,16 @@ public class SessionService {
 
     public void removeAllUserSessions(String userId) {
         try {
+            evictUserFromCache(userId);
             sessionStore.deleteAll(userId);
         } catch (Exception e) {
             log.error("Remove all sessions error for userId: {}", userId, e);
             throw new RuntimeException("모든 세션 삭제 중 오류가 발생했습니다.", e);
         }
+    }
+
+    private void evictUserFromCache(String userId) {
+        validationCache.keySet().removeIf(key -> key.startsWith(userId + ":"));
     }
     
     void removeSession(String userId) {

@@ -38,7 +38,7 @@ public class MessageReadStatusService {
 
         try {
             List<Message> messagesToUpdate = messageRepository.findAllById(messageIds);
-            boolean isUpdated = false; // 실제로 변경사항이 있는지 체크
+            List<Message> changedMessages = new ArrayList<>(); // 실제로 변경된 메시지만 담을 리스트
 
             for (Message message : messagesToUpdate) {
                 if (message.getReaders() == null) {
@@ -49,16 +49,16 @@ public class MessageReadStatusService {
 
                 if (!alreadyRead) {
                     message.getReaders().add(readerInfo);
-                    isUpdated = true;
+                    changedMessages.add(message); // 변경된 메시지만 추가
                 }
                 // 여기서 save() 하지 않음!
             }
 
             // 변경된 게 있을 때만 한 번에 저장 (Bulk Write)
-            if (isUpdated) {
-                messageRepository.saveAll(messagesToUpdate);
+            if (!changedMessages.isEmpty()) {
+                messageRepository.saveAll(changedMessages);
                 log.debug("Read status updated for {} messages by user {}",
-                        messagesToUpdate.size(), userId);
+                        changedMessages.size(), userId);
             }
 
         } catch (Exception e) {
