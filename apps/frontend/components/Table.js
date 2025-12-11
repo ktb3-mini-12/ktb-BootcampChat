@@ -1,4 +1,4 @@
-import { forwardRef } from 'react';
+import { forwardRef, memo } from 'react';
 
 /* -------------------------------------------------------------------------------------------------
  * Table.Root
@@ -52,7 +52,7 @@ Footer.displayName = 'TableFooter';
  * Table.Row
  * -----------------------------------------------------------------------------------------------*/
 
-const Row = forwardRef(
+const Row = memo(forwardRef(
     ({ className, style, ...props }, ref) => {
         return (
             <tr
@@ -67,7 +67,7 @@ const Row = forwardRef(
             />
         );
     },
-);
+));
 Row.displayName = 'TableRow';
 
 /* -------------------------------------------------------------------------------------------------

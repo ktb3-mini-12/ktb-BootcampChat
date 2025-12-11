@@ -166,7 +166,7 @@ export const useChatRoom = () => {
     handleReactionUpdate
   } = useReactionHandling(socketRef, currentUser, messages, setMessages);
 
-  // 메시지 처리 유틸리티 함수
+  // 메시지 처리 유틸리티 함수 (최적화: 단일 순회로 필터링+중복제거+정렬)
   const processMessages = useCallback((loadedMessages, hasMore, isInitialLoad = false) => {
     try {
       if (!Array.isArray(loadedMessages)) {
@@ -174,31 +174,59 @@ export const useChatRoom = () => {
       }
 
       setMessages(prev => {
-        // 중복 메시지 필터링 개선
-        const newMessages = loadedMessages.filter(msg => {
-          if (!msg._id) return false;
-          if (processedMessageIds.current.has(msg._id)) return false;
-          processedMessageIds.current.add(msg._id);
-          return true;
-        });
-
-        // 기존 메시지와 새 메시지 결합 및 정렬
-        const allMessages = [...prev, ...newMessages].sort((a, b) => {
-          return new Date(a.timestamp || 0) - new Date(b.timestamp || 0);
-        });
-
-        // 중복 제거 (가장 최근 메시지 유지)
+        // 단일 Map으로 기존 메시지 + 새 메시지 병합 (중복 제거 포함)
         const messageMap = new Map();
-        allMessages.forEach(msg => messageMap.set(msg._id, msg));
-        return Array.from(messageMap.values());
+
+        // 1. 기존 메시지를 Map에 추가
+        for (const msg of prev) {
+          if (msg._id) {
+            messageMap.set(msg._id, msg);
+          }
+        }
+
+        // 2. 새 메시지 처리 (중복 체크 + processedIds 업데이트)
+        for (const msg of loadedMessages) {
+          if (!msg._id) continue;
+
+          // 이미 처리된 메시지는 스킵 (하지만 업데이트된 경우 반영)
+          if (!processedMessageIds.current.has(msg._id)) {
+            processedMessageIds.current.add(msg._id);
+          }
+
+          // Map에 추가 (이미 존재하면 덮어씀 - 최신 버전 유지)
+          messageMap.set(msg._id, msg);
+        }
+
+        // 3. Map을 배열로 변환 후 정렬 (단일 정렬)
+        const result = Array.from(messageMap.values());
+
+        // 이미 정렬된 경우 정렬 스킵 (성능 최적화)
+        if (result.length <= 1) return result;
+
+        // 정렬 필요 여부 확인 (O(n) 체크)
+        let needsSort = false;
+        for (let i = 1; i < result.length; i++) {
+          const prevTime = new Date(result[i - 1].timestamp || 0).getTime();
+          const currTime = new Date(result[i].timestamp || 0).getTime();
+          if (prevTime > currTime) {
+            needsSort = true;
+            break;
+          }
+        }
+
+        if (needsSort) {
+          result.sort((a, b) => {
+            return new Date(a.timestamp || 0) - new Date(b.timestamp || 0);
+          });
+        }
+
+        return result;
       });
 
       // 메시지 로드 상태 업데이트
+      setHasMoreMessages(hasMore);
       if (isInitialLoad) {
-        setHasMoreMessages(hasMore);
         initialLoadCompletedRef.current = true;
-      } else {
-        setHasMoreMessages(hasMore);
       }
 
     } catch (error) {

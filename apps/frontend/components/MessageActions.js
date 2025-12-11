@@ -1,9 +1,15 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
+import dynamic from 'next/dynamic';
 import { LikeIcon, CopyIcon } from '@vapor-ui/icons';
 import { Button, IconButton, VStack, HStack, Box } from '@vapor-ui/core';
-import EmojiPicker from './EmojiPicker';
 import { Toast } from './Toast';
+
+// emoji-mart 동적 import (~500KB 번들 사이즈 감소)
+const EmojiPicker = dynamic(() => import('./EmojiPicker'), {
+  loading: () => <div className="p-4">이모지 로딩중...</div>,
+  ssr: false,
+});
 
 const MessageActions = ({ 
   messageId,

@@ -4,8 +4,8 @@ on:
   push:
     branches: [main]
     paths:
-      - "apps/frontend/**"
-      - ".github/workflows/cd-frontend.yml"
+      - 'apps/frontend/**'
+      - '.github/workflows/cd-frontend.yml'
 
 jobs:
   deploy:
@@ -19,8 +19,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
-          cache: "npm"
+          node-version: '22'
+          cache: 'npm'
           cache-dependency-path: apps/frontend/package-lock.json
 
       - name: Create .env.production

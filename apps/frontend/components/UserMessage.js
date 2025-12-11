@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useMemo } from 'react';
 import { VStack, HStack } from '@vapor-ui/core';
 import MessageContent from './MessageContent';
 import MessageActions from './MessageActions';
@@ -6,8 +6,8 @@ import CustomAvatar from './CustomAvatar';
 import ReadStatus from './ReadStatus';
 
 const UserMessage = ({
-  msg = {}, 
-  isMine = false, 
+  msg = {},
+  isMine = false,
   currentUser = null,
   onReactionAdd,
   onReactionRemove,
@@ -16,15 +16,20 @@ const UserMessage = ({
 }) => {
   // 메시지 DOM 요소에 대한 ref 생성
   const messageDomRef = useRef(null);
-  const formattedTime = new Date(msg.timestamp).toLocaleString('ko-KR', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  }).replace(/\./g, '년').replace(/\s/g, ' ').replace('일 ', '일 ');
+
+  // 시간 포맷팅 메모이제이션 (timestamp 변경 시에만 재계산)
+  const formattedTime = useMemo(() => {
+    if (!msg.timestamp) return '';
+    return new Date(msg.timestamp).toLocaleString('ko-KR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).replace(/\./g, '년').replace(/\s/g, ' ').replace('일 ', '일 ');
+  }, [msg.timestamp]);
 
   const user = isMine ? currentUser : msg.sender;
 

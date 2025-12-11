@@ -1,7 +1,13 @@
-import React, { useCallback, useEffect, useRef, useState, forwardRef } from "react";
+import React, { useCallback, useEffect, useRef, useState, forwardRef, useMemo, memo } from "react";
+import dynamic from "next/dynamic";
 import { LikeIcon, AttachFileOutlineIcon, SendIcon } from "@vapor-ui/icons";
 import { Button, IconButton, VStack, HStack, Box, Field, Textarea } from "@vapor-ui/core";
-import EmojiPicker from "./EmojiPicker";
+
+// emoji-mart 동적 import (~500KB 번들 사이즈 감소)
+const EmojiPicker = dynamic(() => import("./EmojiPicker"), {
+  loading: () => <Box padding="$200">이모지 로딩중...</Box>,
+  ssr: false,
+});
 import MentionDropdown from "./MentionDropdown";
 import FilePreview from "./FilePreview";
 import fileService from "@/services/fileService";
@@ -42,6 +48,9 @@ const ChatInput = forwardRef(
     const [uploadError, setUploadError] = useState(null);
     const [isDragging, setIsDragging] = useState(false);
     const [mentionPosition, setMentionPosition] = useState({ top: 0, left: 0 });
+    const mentionDebounceRef = useRef(null);
+    const measureDivRef = useRef(null);
+    const cachedStylesRef = useRef(null);
 
     const handleFileValidationAndPreview = useCallback(
       async (file) => {
@@ -178,6 +187,15 @@ const ChatInput = forwardRef(
         document.removeEventListener("mousedown", handleClickOutside);
         document.removeEventListener("paste", handlePaste);
         files.forEach((file) => URL.revokeObjectURL(file.url));
+        if (mentionDebounceRef.current) {
+          clearTimeout(mentionDebounceRef.current);
+        }
+        // measureDiv cleanup
+        if (measureDivRef.current && measureDivRef.current.parentNode) {
+          measureDivRef.current.parentNode.removeChild(measureDivRef.current);
+          measureDivRef.current = null;
+        }
+        cachedStylesRef.current = null;
       };
     }, [showEmojiPicker, setShowEmojiPicker, files, messageInputRef, handleFileValidationAndPreview]);
 
@@ -187,27 +205,47 @@ const ChatInput = forwardRef(
       const currentLineIndex = lines.length - 1;
       const currentLineText = lines[currentLineIndex];
 
-      const measureDiv = document.createElement("div");
-      measureDiv.style.position = "absolute";
-      measureDiv.style.visibility = "hidden";
-      measureDiv.style.whiteSpace = "pre";
-      measureDiv.style.font = window.getComputedStyle(textarea).font;
-      measureDiv.style.fontSize = window.getComputedStyle(textarea).fontSize;
-      measureDiv.style.fontFamily = window.getComputedStyle(textarea).fontFamily;
-      measureDiv.style.fontWeight = window.getComputedStyle(textarea).fontWeight;
-      measureDiv.style.letterSpacing = window.getComputedStyle(textarea).letterSpacing;
-      measureDiv.style.textTransform = window.getComputedStyle(textarea).textTransform;
-      measureDiv.textContent = currentLineText;
+      // measureDiv 재사용 (DOM 조작 비용 감소)
+      if (!measureDivRef.current) {
+        measureDivRef.current = document.createElement("div");
+        measureDivRef.current.style.position = "absolute";
+        measureDivRef.current.style.visibility = "hidden";
+        measureDivRef.current.style.whiteSpace = "pre";
+        measureDivRef.current.style.pointerEvents = "none";
+        document.body.appendChild(measureDivRef.current);
+      }
 
-      document.body.appendChild(measureDiv);
-      const textWidth = measureDiv.offsetWidth;
-      document.body.removeChild(measureDiv);
+      // textarea 스타일 캐싱 (getComputedStyle 호출 최소화)
+      const computedStyle = window.getComputedStyle(textarea);
+      if (!cachedStylesRef.current || cachedStylesRef.current.element !== textarea) {
+        cachedStylesRef.current = {
+          element: textarea,
+          font: computedStyle.font,
+          fontSize: computedStyle.fontSize,
+          fontFamily: computedStyle.fontFamily,
+          fontWeight: computedStyle.fontWeight,
+          letterSpacing: computedStyle.letterSpacing,
+          textTransform: computedStyle.textTransform,
+          paddingLeft: parseInt(computedStyle.paddingLeft),
+          paddingTop: parseInt(computedStyle.paddingTop),
+          lineHeight: parseInt(computedStyle.lineHeight) || parseFloat(computedStyle.fontSize) * 1.5,
+        };
+
+        // measureDiv에 캐싱된 스타일 적용
+        const div = measureDivRef.current;
+        div.style.font = cachedStylesRef.current.font;
+        div.style.fontSize = cachedStylesRef.current.fontSize;
+        div.style.fontFamily = cachedStylesRef.current.fontFamily;
+        div.style.fontWeight = cachedStylesRef.current.fontWeight;
+        div.style.letterSpacing = cachedStylesRef.current.letterSpacing;
+        div.style.textTransform = cachedStylesRef.current.textTransform;
+      }
+
+      measureDivRef.current.textContent = currentLineText;
+      const textWidth = measureDivRef.current.offsetWidth;
 
       const textareaRect = textarea.getBoundingClientRect();
-      const computedStyle = window.getComputedStyle(textarea);
-      const paddingLeft = parseInt(computedStyle.paddingLeft);
-      const paddingTop = parseInt(computedStyle.paddingTop);
-      const lineHeight = parseInt(computedStyle.lineHeight) || parseFloat(computedStyle.fontSize) * 1.5;
+      const { paddingLeft, paddingTop, lineHeight } = cachedStylesRef.current;
       const scrollTop = textarea.scrollTop;
 
       let left = textareaRect.left + paddingLeft + textWidth;
@@ -216,7 +254,6 @@ const ChatInput = forwardRef(
       const dropdownWidth = 320;
       const dropdownHeight = 250;
       const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
 
       if (left + dropdownWidth > viewportWidth) {
         left = viewportWidth - dropdownWidth - 10;
@@ -242,20 +279,31 @@ const ChatInput = forwardRef(
         const cursorPosition = e.target.selectionStart;
         const textBeforeCursor = value.slice(0, cursorPosition);
         const lastAtSymbol = textBeforeCursor.lastIndexOf("@");
+        const textarea = e.target;
 
+        // 입력값은 즉시 반영
         onMessageChange(e);
+
+        // 이전 디바운스 타이머 취소
+        if (mentionDebounceRef.current) {
+          clearTimeout(mentionDebounceRef.current);
+        }
 
         if (lastAtSymbol !== -1) {
           const textAfterAt = textBeforeCursor.slice(lastAtSymbol + 1);
           const hasSpaceAfterAt = textAfterAt.includes(" ");
 
           if (!hasSpaceAfterAt) {
+            // 멘션 필터는 즉시 업데이트 (드롭다운 내용 반영)
             setMentionFilter(textAfterAt.toLowerCase());
             setShowMentionList(true);
             setMentionIndex(0);
 
-            const position = calculateMentionPosition(e.target, lastAtSymbol);
-            setMentionPosition(position);
+            // 멘션 위치 계산은 디바운싱 (50ms) - DOM 조작 비용 감소
+            mentionDebounceRef.current = setTimeout(() => {
+              const position = calculateMentionPosition(textarea, lastAtSymbol);
+              setMentionPosition(position);
+            }, 50);
             return;
           }
         }
@@ -525,4 +573,4 @@ const ChatInput = forwardRef(
 
 ChatInput.displayName = "ChatInput";
 
-export default ChatInput;
+export default memo(ChatInput);
