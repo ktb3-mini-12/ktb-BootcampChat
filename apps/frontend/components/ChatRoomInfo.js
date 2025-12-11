@@ -47,7 +47,7 @@ const ChatRoomInfo = ({ room, connectionStatus }) => {
                 <div className="flex -space-x-2">
                   {participants.slice(0, maxVisibleAvatars).map((participant, index) => (
                     <div
-                      key={participant._id}
+                      key={participant._id || participant.email}
                       className="ring-1 rounded-full"
                       style={{ zIndex: maxVisibleAvatars - index }}
                     >
@@ -111,7 +111,7 @@ const ChatRoomInfo = ({ room, connectionStatus }) => {
             <div className="max-h-64 overflow-y-auto">
               {participants.map((participant) => (
                 <HStack
-                  key={participant._id}
+                  key={participant._id || participant.email}
                   gap="$200"
                   alignItems="center"
                   className="px-2 py-2 hover:bg-background-contrast-100 rounded-lg transition-colors"
