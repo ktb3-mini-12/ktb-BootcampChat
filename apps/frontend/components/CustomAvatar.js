@@ -118,7 +118,7 @@ const CustomAvatar = forwardRef(({
   return (
     <Avatar.Root
       ref={ref}
-      key={user?._id || user?.id}
+      key={user?._id || user?.id} // key는 여기서 쓰는게 아니라 부모에서 써야하지만 안전장치
       shape="circle"
       size={size}
       render={renderProp}

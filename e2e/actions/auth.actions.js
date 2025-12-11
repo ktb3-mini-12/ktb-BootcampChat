@@ -1,4 +1,4 @@
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
 
 /**
  * 로그인 액션
@@ -20,11 +20,11 @@ async function loginAction(page, credentials) {
  */
 async function registerAction(page, userData) {
   await page.goto(`${BASE_URL}/register`);
-  await page.getByTestId('register-email-input').fill(userData.email);
-  await page.getByTestId('register-password-input').fill(userData.password);
-  await page.getByTestId('register-password-confirm-input').fill(userData.passwordConfirm);
-  await page.getByTestId('register-name-input').fill(userData.name);
-  await page.getByTestId('register-submit-button').click();
+  await page.getByTestId("register-email-input").fill(userData.email);
+  await page.getByTestId("register-password-input").fill(userData.password);
+  await page.getByTestId("register-password-confirm-input").fill(userData.passwordConfirm);
+  await page.getByTestId("register-name-input").fill(userData.name);
+  await page.getByTestId("register-submit-button").click();
 }
 
 /**
@@ -32,7 +32,7 @@ async function registerAction(page, userData) {
  * @param {import('@playwright/test').Page} page
  */
 async function logoutAction(page) {
-  await page.getByTestId('logout-link').click();
+  await page.getByTestId("logout-link").click();
 }
 
 module.exports = {
