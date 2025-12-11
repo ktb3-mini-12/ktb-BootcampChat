@@ -9,13 +9,12 @@ import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RTopic;
 import org.redisson.api.RedissonClient;
-import org.redisson.api.listener.MessageListener;
+import org.redisson.client.codec.StringCodec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
-import java.util.UUID;
 
 import static com.ktb.chatapp.pubsub.RedisBroadcastMessage.*;
 import static com.ktb.chatapp.websocket.socketio.SocketIOEvents.*;
@@ -53,11 +52,17 @@ public class RedisPubSubService {
 
     @PostConstruct
     public void init() {
-        topic = redissonClient.getTopic(TOPIC_NAME);
+        // StringCodec 사용하여 @class 타입 정보 문제 우회
+        topic = redissonClient.getTopic(TOPIC_NAME, StringCodec.INSTANCE);
 
-        // 메시지 리스너 등록
-        listenerId = topic.addListener(RedisBroadcastMessage.class, (channel, message) -> {
-            handleMessage(message);
+        // String으로 수신 후 직접 역직렬화
+        listenerId = topic.addListener(String.class, (channel, messageJson) -> {
+            try {
+                RedisBroadcastMessage message = objectMapper.readValue(messageJson, RedisBroadcastMessage.class);
+                handleMessage(message);
+            } catch (JsonProcessingException e) {
+                log.error("Failed to deserialize Redis message: {}", messageJson, e);
+            }
         });
 
         log.info("Redis Pub/Sub initialized - serverId: {}, topic: {}", serverId, TOPIC_NAME);
@@ -82,7 +87,9 @@ public class RedisPubSubService {
                 serverId, eventType, roomId, payload
             );
 
-            topic.publishAsync(message);
+            // String으로 직렬화하여 발행 (StringCodec 사용)
+            String messageJson = objectMapper.writeValueAsString(message);
+            topic.publishAsync(messageJson);
             log.debug("Published to Redis - eventType: {}, roomId: {}, serverId: {}",
                 eventType, roomId, serverId);
         } catch (JsonProcessingException e) {
