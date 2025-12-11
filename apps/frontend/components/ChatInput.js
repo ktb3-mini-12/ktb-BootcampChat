@@ -1,7 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState, forwardRef, useMemo, memo } from "react";
+import dynamic from "next/dynamic";
 import { LikeIcon, AttachFileOutlineIcon, SendIcon } from "@vapor-ui/icons";
 import { Button, IconButton, VStack, HStack, Box, Field, Textarea } from "@vapor-ui/core";
-import EmojiPicker from "./EmojiPicker";
+
+// emoji-mart 동적 import (~500KB 번들 사이즈 감소)
+const EmojiPicker = dynamic(() => import("./EmojiPicker"), {
+  loading: () => <Box padding="$200">이모지 로딩중...</Box>,
+  ssr: false,
+});
 import MentionDropdown from "./MentionDropdown";
 import FilePreview from "./FilePreview";
 import fileService from "@/services/fileService";

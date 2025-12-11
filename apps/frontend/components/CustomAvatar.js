@@ -1,21 +1,28 @@
-import React, { useState, useEffect, useCallback, forwardRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, forwardRef } from 'react';
 import { Avatar } from '@vapor-ui/core';
 import { generateColorFromEmail, getContrastTextColor } from '@/utils/colorUtils';
 
-/**
- * CustomAvatar 컴포넌트
- * 
- * @param {Object} props
- * @param {Object} props.user - 사용자 객체 (name, email, profileImage 필드)
- * @param {string} props.size - 아바타 크기 ('sm' | 'md' | 'lg' | 'xl')
- * @param {Function} props.onClick - 클릭 핸들러 (있으면 button으로 렌더링)
- * @param {string} props.src - 프로필 이미지 URL (user.profileImage 대신 직접 지정 가능)
- * @param {boolean} props.showImage - 이미지 표시 여부 (기본값: true)
- * @param {boolean} props.persistent - 실시간 프로필 업데이트 감지 여부 (기본값: false)
- * @param {boolean} props.showInitials - 이니셜 표시 여부 (기본값: true)
- * @param {string} props.className - 추가 CSS 클래스
- * @param {Object} props.style - 추가 인라인 스타일
- */
+// [최적화 1] 전역 색상 캐시 (컴포넌트 외부에 선언하여 메모리 공유)
+// 이메일이 같으면 무조건 같은 색상이 나오므로 매번 계산할 필요가 없습니다.
+const colorCache = new Map();
+
+const getCachedColors = (email) => {
+  if (!email) return { backgroundColor: '#E0E0E0', color: '#000000' };
+
+  if (colorCache.has(email)) {
+    return colorCache.get(email);
+  }
+
+  // 캐시에 없으면 계산 후 저장
+  const backgroundColor = generateColorFromEmail(email);
+  const color = getContrastTextColor(backgroundColor);
+  const colors = { backgroundColor, color };
+
+  // 캐시 저장 (메모리 누수 방지를 위해 사이즈 제한을 둘 수도 있지만, 텍스트라 부담 적음)
+  colorCache.set(email, colors);
+  return colors;
+};
+
 const CustomAvatar = forwardRef(({
   user,
   size = 'md',
@@ -28,30 +35,23 @@ const CustomAvatar = forwardRef(({
   style = {},
   ...props
 }, ref) => {
-  // persistent 모드일 때만 상태 관리
   const [currentImage, setCurrentImage] = useState('');
   const [imageError, setImageError] = useState(false);
 
-  // 이메일 기반 배경색/텍스트 색상 생성
-  const backgroundColor = generateColorFromEmail(user?.email);
-  const color = getContrastTextColor(backgroundColor);
+  // [최적화 2] 색상 계산 메모이제이션 (캐시 조회)
+  const { backgroundColor, color } = useMemo(() =>
+    getCachedColors(user?.email),
+  [user?.email]);
 
-  // 프로필 이미지 URL 생성 (memoized)
+  // [최적화 3] 이미지 URL 생성 로직 메모이제이션
   const getImageUrl = useCallback((imagePath) => {
-    // src prop이 직접 제공된 경우
     if (src) return src;
-    
     if (!imagePath) return null;
-    
-    // 이미 전체 URL인 경우
-    if (imagePath.startsWith('http')) {
-      return imagePath;
-    }
-    // API URL과 결합 필요한 경우
+    if (imagePath.startsWith('http')) return imagePath;
     return `${process.env.NEXT_PUBLIC_API_URL}${imagePath}`;
   }, [src]);
 
-  // persistent 모드: 프로필 이미지 URL 처리
+  // persistent 모드일 때만 실행되는 로직들
   useEffect(() => {
     if (!persistent) return;
 
@@ -64,14 +64,12 @@ const CustomAvatar = forwardRef(({
     }
   }, [persistent, user?.profileImage, getImageUrl, currentImage]);
 
-  // persistent 모드: 전역 프로필 업데이트 리스너
   useEffect(() => {
     if (!persistent) return;
 
     const handleProfileUpdate = () => {
       try {
         const updatedUser = JSON.parse(localStorage.getItem('user') || '{}');
-        // 현재 사용자의 프로필이 업데이트된 경우에만 이미지 업데이트
         if (user?.id === updatedUser.id && updatedUser.profileImage !== user.profileImage) {
           const newImageUrl = getImageUrl(updatedUser.profileImage);
           setImageError(false);
@@ -81,48 +79,44 @@ const CustomAvatar = forwardRef(({
         console.error('Profile update handling error:', error);
       }
     };
-    
+
     window.addEventListener('userProfileUpdate', handleProfileUpdate);
     return () => {
       window.removeEventListener('userProfileUpdate', handleProfileUpdate);
     };
   }, [persistent, getImageUrl, user?.id, user?.profileImage]);
 
-  // 이미지 에러 핸들러
   const handleImageError = useCallback((e) => {
-    if (!persistent) return;
-    
+    if (!persistent) return; // persistent 아니면 굳이 상태 업데이트 안함 (무한 루프 방지)
+
     e.preventDefault();
-    setImageError(true);
+    setImageError(true); // persistent일 때만 fallback으로 전환하기 위함
+  }, [persistent]);
 
-    console.debug('Avatar image load failed:', {
-      user: user?.name,
-      email: user?.email,
-      imageUrl: persistent ? currentImage : getImageUrl(user?.profileImage)
-    });
-  }, [persistent, currentImage, user?.name, user?.email, user?.profileImage, getImageUrl]);
-
-  // 최종 이미지 URL 결정
-  const finalImageUrl = (() => {
+  // [최적화 4] 최종 렌더링 값 계산
+  const finalImageUrl = useMemo(() => {
     if (!showImage) return undefined;
-    
+
+    // persistent 모드면 상태값 사용, 아니면 바로 계산 (리렌더링 방지)
     if (persistent) {
       return currentImage && !imageError ? currentImage : undefined;
     }
-    
+
     return getImageUrl(user?.profileImage);
-  })();
+  }, [showImage, persistent, currentImage, imageError, user?.profileImage, getImageUrl]);
 
-  // 사용자 이름 첫 글자
-  const initial = showInitials ? (user?.name?.charAt(0)?.toUpperCase() || '?') : '';
+  const initial = useMemo(() => {
+    return showInitials ? (user?.name?.charAt(0)?.toUpperCase() || '?') : '';
+  }, [showInitials, user?.name]);
 
-  // 클릭 가능한 경우 button으로 렌더링
-  const renderProp = onClick ? <button onClick={onClick} /> : undefined;
+  const renderProp = useMemo(() =>
+    onClick ? <button onClick={onClick} type="button" /> : undefined,
+  [onClick]);
 
   return (
     <Avatar.Root
       ref={ref}
-      key={user?._id || user?.id}
+      key={user?._id || user?.id} // key는 여기서 쓰는게 아니라 부모에서 써야하지만 안전장치
       shape="circle"
       size={size}
       render={renderProp}
@@ -137,9 +131,10 @@ const CustomAvatar = forwardRef(({
       {...props}
     >
       {finalImageUrl && (
-        <Avatar.ImagePrimitive 
-          onError={persistent ? handleImageError : undefined}
+        <Avatar.ImagePrimitive
+          onError={handleImageError}
           alt={`${user?.name}'s profile`}
+          loading="lazy" // [추가] 네이티브 레이지 로딩 적용
         />
       )}
       <Avatar.FallbackPrimitive style={{ backgroundColor, color, fontWeight: '500' }}>
@@ -151,4 +146,16 @@ const CustomAvatar = forwardRef(({
 
 CustomAvatar.displayName = 'CustomAvatar';
 
-export default CustomAvatar;
+// [최적화 5] React.memo 적용
+// user 객체가 바뀌지 않으면 리렌더링 하지 않음
+export default React.memo(CustomAvatar, (prev, next) => {
+  return (
+    prev.user?.id === next.user?.id &&
+    prev.user?.profileImage === next.user?.profileImage &&
+    prev.user?.name === next.user?.name &&
+    prev.user?.email === next.user?.email &&
+    prev.size === next.size &&
+    prev.src === next.src &&
+    prev.persistent === next.persistent
+  );
+});

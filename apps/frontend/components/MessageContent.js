@@ -1,65 +1,82 @@
 import React, { useMemo } from 'react';
 import { Text, Badge } from '@vapor-ui/core';
 
-const MessageContent = ({ content }) => {
-  // 멘션 패턴을 찾아서 React 엘리먼트로 변환하는 함수
-  const renderContentWithMentions = useMemo(() => (text) => {
-    const mentionPattern = /@([\w.-]+)/g;
-    const parts = [];
-    let lastIndex = 0;
-    let match;
+// [개선] 정규식 객체를 컴포넌트 외부로 이동 (CPU 낭비 방지)
+const MENTION_PATTERN = /@([\w.-]+)/g;
 
-    while ((match = mentionPattern.exec(text)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push(
-          <span key={`text-${lastIndex}`}>
-            {text.slice(lastIndex, match.index)}
-          </span>
-        );
-      }
+// 멘션 패턴을 찾아서 React 엘리먼트로 변환하는 함수 (순수 함수화)
+const parseTextWithMentions = (text) => {
+  if (!text.includes('@')) return text;
 
-      const mentionedName = match[1];
+  const parts = [];
+  let lastIndex = 0;
+  let match;
 
-      parts.push(
-        <Badge
-          key={`mention-${match.index}`}
-          colorPalette="primary"
-          shape="square"
-          size="sm"
-        >
-          @{mentionedName}
-        </Badge>
-      );
+  // [중요] 전역 정규식(g flag) 재사용 시 lastIndex 초기화 필수
+  MENTION_PATTERN.lastIndex = 0;
 
-      lastIndex = match.index + match[0].length;
-    }
-
-    if (lastIndex < text.length) {
+  while ((match = MENTION_PATTERN.exec(text)) !== null) {
+    if (match.index > lastIndex) {
       parts.push(
         <span key={`text-${lastIndex}`}>
-          {text.slice(lastIndex)}
+          {text.slice(lastIndex, match.index)}
         </span>
       );
     }
 
-    return parts;
-  }, []);
+    const mentionedName = match[1];
 
-  if (typeof content !== 'string') {
-    return String(content);
+    parts.push(
+      <Badge
+        key={`mention-${match.index}`}
+        colorPalette="primary"
+        shape="square"
+        size="sm"
+        className="mx-0.5 align-middle"
+      >
+        @{mentionedName}
+      </Badge>
+    );
+
+    lastIndex = match.index + match[0].length;
   }
 
-  // 줄바꿈을 처리하여 렌더링
-  const lines = content.split('\n');
-  
+  if (lastIndex < text.length) {
+    parts.push(
+      <span key={`text-${lastIndex}`}>
+        {text.slice(lastIndex)}
+      </span>
+    );
+  }
+
+  return parts;
+};
+
+
+const MessageContent = ({ content }) => {
+  // 전체 렌더링 결과 메모이제이션
+  const renderedContent = useMemo(() => {
+    if (typeof content !== 'string') {
+      return String(content);
+    }
+
+    const lines = content.split('\n');
+
+    return lines.map((line, index) => (
+      <React.Fragment key={index}>
+        {parseTextWithMentions(line)}
+        {index < lines.length - 1 && <br />}
+      </React.Fragment>
+    ));
+  }, [content]);
+
   return (
-    <Text typography="body2" className="message-text" style={{ whiteSpace: 'pre-wrap' }}>
-      {lines.map((line, index) => (
-        <React.Fragment key={index}>
-          {line.includes('@') ? renderContentWithMentions(line) : line}
-          {index < lines.length - 1 && <br />}
-        </React.Fragment>
-      ))}
+    <Text
+      typography="body2"
+      className="message-text break-words"
+      style={{ whiteSpace: 'pre-wrap' }}
+    >
+      {renderedContent}
     </Text>
   );
 };
