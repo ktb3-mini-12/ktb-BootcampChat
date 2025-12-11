@@ -39,7 +39,6 @@ import static com.ktb.chatapp.websocket.socketio.SocketIOEvents.*;
 @RequiredArgsConstructor
 public class ChatMessageHandler {
 	private final SocketIOServer socketIOServer;
-	private final MessageRepository messageRepository;
 	private final RoomRepository roomRepository;
 	private final UserRepository userRepository;
 	private final FileRepository fileRepository;
@@ -48,6 +47,7 @@ public class ChatMessageHandler {
 	private final BannedWordChecker bannedWordChecker;
 	private final RateLimitService rateLimitService;
 	private final MeterRegistry meterRegistry;
+	private final MessageRepository messageRepository;
 	
 	@OnEvent(CHAT_MESSAGE)
 	public void handleChatMessage(SocketIOClient client, ChatMessageRequest data) {
@@ -159,10 +159,12 @@ public class ChatMessageHandler {
 				return;
 			}
 			
-			Message savedMessage = messageRepository.save(message);
-			
+			// 브로드캐스트 먼저 실행 (실시간 응답 보장)
 			socketIOServer.getRoomOperations(roomId)
-					.sendEvent(MESSAGE, createMessageResponse(savedMessage, sender));
+					.sendEvent(MESSAGE, createMessageResponse(message, sender));
+			
+			// MongoDB에 저장
+			messageRepository.save(message);
 			
 			// AI 멘션 처리
 			aiService.handleAIMentions(roomId, socketUser.id(), messageContent);
@@ -173,8 +175,8 @@ public class ChatMessageHandler {
 			recordMessageSuccess(messageType);
 			timerSample.stop(createTimer("success", messageType));
 			
-			log.debug("Message processed - messageId: {}, type: {}, room: {}",
-					savedMessage.getId(), savedMessage.getType(), roomId);
+			log.debug("Message processed - type: {}, room: {}",
+					message.getType(), roomId);
 			
 		} catch (Exception e) {
 			recordError("exception");
@@ -200,6 +202,7 @@ public class ChatMessageHandler {
 		}
 		
 		Message message = new Message();
+		message.setId(UUID.randomUUID().toString());
 		message.setRoomId(roomId);
 		message.setSenderId(userId);
 		message.setType(MessageType.file);
@@ -207,15 +210,7 @@ public class ChatMessageHandler {
 		message.setContent(messageContent.getTrimmedContent());
 		message.setTimestamp(LocalDateTime.now());
 		message.setMentions(messageContent.aiMentions());
-        
-        // 메타데이터는 Map<String, Object>
-        Map<String, Object> metadata = new HashMap<>();
-        metadata.put("fileType", file.getMimetype());
-        metadata.put("fileSize", file.getSize());
-        metadata.put("originalName", file.getOriginalname());
-        metadata.put("fileName", file.getFilename());
-        message.setMetadata(metadata);
-
+		
 		// 메타데이터는 Map<String, Object>
 		Map<String, Object> metadata = new HashMap<>();
 		metadata.put("fileType", file.getMimetype());
@@ -223,91 +218,92 @@ public class ChatMessageHandler {
 		metadata.put("originalName", file.getOriginalname());
 		metadata.put("fileName", file.getFilename());
 		message.setMetadata(metadata);
-
-        return message;
-    }
-
-    private Message handleTextMessage(String roomId, String userId, MessageContent messageContent) {
-        if (messageContent.isEmpty()) {
-            return null; // 빈 메시지는 무시
-        }
-
-        Message message = new Message();
-        message.setRoomId(roomId);
-        message.setSenderId(userId);
-        message.setContent(messageContent.getTrimmedContent());
-        message.setType(MessageType.text);
-        message.setTimestamp(LocalDateTime.now());
-        message.setMentions(messageContent.aiMentions());
-
-        return message;
-    }
-
-    private MessageResponse createMessageResponse(Message message, User sender) {
-        FileResponse fileResponse = buildFileResponse(message);
-
-        return new MessageResponse(
-                message.getId(),
-                message.getContent(),
-                UserResponse.from(sender),
-                message.getType(),
-                fileResponse,
-                message.toTimestampMillis(),
-                message.getReactions() != null ? message.getReactions() : Collections.emptyMap(),
-                message.getReaders() != null ? message.getReaders() : Collections.emptyList()
-        );
-    }
-
-    // Metrics helper methods
-    private Timer createTimer(String status, String messageType) {
-        return Timer.builder("socketio.messages.processing.time")
-                .description("Socket.IO message processing time")
-                .tag("status", status)
-                .tag("message_type", messageType)
-                .register(meterRegistry);
-    }
-
-    private void recordMessageSuccess(String messageType) {
-        Counter.builder("socketio.messages.total")
-                .description("Total Socket.IO messages processed")
-                .tag("status", "success")
-                .tag("message_type", messageType)
-                .register(meterRegistry)
-                .increment();
-    }
-
-    private void recordError(String errorType) {
-        Counter.builder("socketio.messages.errors")
-                .description("Socket.IO message processing errors")
-                .tag("error_type", errorType)
-                .register(meterRegistry)
-                .increment();
-    }
-
-    private FileResponse buildFileResponse(Message message) {
-        if (message.getFileId() == null) {
-            return null;
-        }
-
-        Map<String, Object> metadata = message.getMetadata();
-        if (metadata != null) {
-            Object sizeObj = metadata.get("fileSize");
-            Long size = null;
-            if (sizeObj instanceof Number number) {
-                size = number.longValue();
-            }
-
-            String filename = metadata.get("fileName") instanceof String fn ? fn : null;
-            String originalName = metadata.get("originalName") instanceof String on ? on : null;
-            String fileType = metadata.get("fileType") instanceof String ft ? ft : null;
-
-            if (filename != null && originalName != null && fileType != null && size != null) {
-                return new FileResponse(filename, originalName, fileType, size);
-            }
-        }
-
-        return fileRepository.findById(message.getFileId())
-                .map(FileResponse::from)
-                .orElse(null);
-    }
+		
+		return message;
+	}
+	
+	private Message handleTextMessage(String roomId, String userId, MessageContent messageContent) {
+		if (messageContent.isEmpty()) {
+			return null; // 빈 메시지는 무시
+		}
+		
+		Message message = new Message();
+		message.setId(UUID.randomUUID().toString());
+		message.setRoomId(roomId);
+		message.setSenderId(userId);
+		message.setContent(messageContent.getTrimmedContent());
+		message.setType(MessageType.text);
+		message.setTimestamp(LocalDateTime.now());
+		message.setMentions(messageContent.aiMentions());
+		
+		return message;
+	}
+	
+	private MessageResponse createMessageResponse(Message message, User sender) {
+		FileResponse fileResponse = buildFileResponse(message);
+		
+		return new MessageResponse(
+				message.getId(),
+				message.getContent(),
+				UserResponse.from(sender),
+				message.getType(),
+				fileResponse,
+				message.toTimestampMillis(),
+				message.getReactions() != null ? message.getReactions() : Collections.emptyMap(),
+				message.getReaders() != null ? message.getReaders() : Collections.emptyList()
+		);
+	}
+	
+	// Metrics helper methods
+	private Timer createTimer(String status, String messageType) {
+		return Timer.builder("socketio.messages.processing.time")
+				.description("Socket.IO message processing time")
+				.tag("status", status)
+				.tag("message_type", messageType)
+				.register(meterRegistry);
+	}
+	
+	private void recordMessageSuccess(String messageType) {
+		Counter.builder("socketio.messages.total")
+				.description("Total Socket.IO messages processed")
+				.tag("status", "success")
+				.tag("message_type", messageType)
+				.register(meterRegistry)
+				.increment();
+	}
+	
+	private void recordError(String errorType) {
+		Counter.builder("socketio.messages.errors")
+				.description("Socket.IO message processing errors")
+				.tag("error_type", errorType)
+				.register(meterRegistry)
+				.increment();
+	}
+	
+	private FileResponse buildFileResponse(Message message) {
+		if (message.getFileId() == null) {
+			return null;
+		}
+		
+		Map<String, Object> metadata = message.getMetadata();
+		if (metadata != null) {
+			Object sizeObj = metadata.get("fileSize");
+			Long size = null;
+			if (sizeObj instanceof Number number) {
+				size = number.longValue();
+			}
+			
+			String filename = metadata.get("fileName") instanceof String fn ? fn : null;
+			String originalName = metadata.get("originalName") instanceof String on ? on : null;
+			String fileType = metadata.get("fileType") instanceof String ft ? ft : null;
+			
+			if (filename != null && originalName != null && fileType != null && size != null) {
+				return new FileResponse(filename, originalName, fileType, size);
+			}
+		}
+		
+		return fileRepository.findById(message.getFileId())
+				.map(FileResponse::from)
+				.orElse(null);
+	}
 }
