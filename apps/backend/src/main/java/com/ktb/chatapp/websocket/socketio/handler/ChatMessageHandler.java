@@ -39,7 +39,6 @@ import static com.ktb.chatapp.websocket.socketio.SocketIOEvents.*;
 @RequiredArgsConstructor
 public class ChatMessageHandler {
     private final SocketIOServer socketIOServer;
-    private final MessageRepository messageRepository;
     private final RoomRepository roomRepository;
     private final UserRepository userRepository;
     private final FileRepository fileRepository;
@@ -48,7 +47,8 @@ public class ChatMessageHandler {
     private final BannedWordChecker bannedWordChecker;
     private final RateLimitService rateLimitService;
     private final MeterRegistry meterRegistry;
-    
+    private final MessageRepository messageRepository;
+
     @OnEvent(CHAT_MESSAGE)
     public void handleChatMessage(SocketIOClient client, ChatMessageRequest data) {
         Timer.Sample timerSample = Timer.start(meterRegistry);
@@ -159,10 +159,12 @@ public class ChatMessageHandler {
                 return;
             }
 
-            Message savedMessage = messageRepository.save(message);
-
+            // 브로드캐스트 먼저 실행 (실시간 응답 보장)
             socketIOServer.getRoomOperations(roomId)
-                    .sendEvent(MESSAGE, createMessageResponse(savedMessage, sender));
+                    .sendEvent(MESSAGE, createMessageResponse(message, sender));
+
+            // MongoDB에 저장
+            messageRepository.save(message);
 
             // AI 멘션 처리
             aiService.handleAIMentions(roomId, socketUser.id(), messageContent);
@@ -173,8 +175,8 @@ public class ChatMessageHandler {
             recordMessageSuccess(messageType);
             timerSample.stop(createTimer("success", messageType));
 
-            log.debug("Message processed - messageId: {}, type: {}, room: {}",
-                savedMessage.getId(), savedMessage.getType(), roomId);
+            log.debug("Message processed - type: {}, room: {}",
+                message.getType(), roomId);
 
         } catch (Exception e) {
             recordError("exception");
@@ -200,6 +202,7 @@ public class ChatMessageHandler {
         }
 
         Message message = new Message();
+        message.setId(UUID.randomUUID().toString());
         message.setRoomId(roomId);
         message.setSenderId(userId);
         message.setType(MessageType.file);
@@ -207,13 +210,6 @@ public class ChatMessageHandler {
         message.setContent(messageContent.getTrimmedContent());
         message.setTimestamp(LocalDateTime.now());
         message.setMentions(messageContent.aiMentions());
-        
-        // 메타데이터는 Map<String, Object>
-        Map<String, Object> metadata = new HashMap<>();
-        metadata.put("fileType", file.getMimetype());
-        metadata.put("fileSize", file.getSize());
-        metadata.put("originalName", file.getOriginalname());
-        message.setMetadata(metadata);
 
         return message;
     }
@@ -224,6 +220,7 @@ public class ChatMessageHandler {
         }
 
         Message message = new Message();
+        message.setId(UUID.randomUUID().toString());
         message.setRoomId(roomId);
         message.setSenderId(userId);
         message.setContent(messageContent.getTrimmedContent());
