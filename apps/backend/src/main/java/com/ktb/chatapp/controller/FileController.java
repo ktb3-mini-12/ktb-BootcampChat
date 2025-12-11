@@ -214,8 +214,7 @@ public class FileController {
                     .replaceAll("\\+", "%20");
 
             String contentDisposition = String.format(
-                    "inline; filename=\"%s\"; filename*=UTF-8''%s",
-                    originalFilename,
+                    "inline; filename*=UTF-8''%s",
                     encodedFilename
             );
 
