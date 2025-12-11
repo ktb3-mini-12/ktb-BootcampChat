@@ -44,7 +44,7 @@ services:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_SERVER_ROOT_URL=http://localhost:9091
+      - GF_SERVER_ROOT_URL=http://localhost:3000
       - GF_ANALYTICS_REPORTING_ENABLED=false
     volumes:
       - grafana_data:/var/lib/grafana
@@ -69,6 +69,53 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # MongoDB Exporter - chat-db (10.0.102.54)의 MongoDB 모니터링
+  mongodb-exporter:
+    image: percona/mongodb_exporter:0.47.1
+    container_name: mongodb-exporter-ktb
+    restart: unless-stopped
+    ports:
+      - "9216:9216"
+    command:
+      - '--mongodb.uri=mongodb://10.0.102.54:27017'
+      - '--collect-all'
+    networks:
+      - monitoring
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9216/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Redis Exporter - chat-db (10.0.102.54)의 Redis 모니터링
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.80.0
+    container_name: redis-exporter-ktb
+    restart: unless-stopped
+    ports:
+      - "9121:9121"
+    environment:
+      - REDIS_ADDR=redis://10.0.102.54:6379
+    networks:
+      - monitoring
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: '0.1'
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9121/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 volumes:
   prometheus_data:

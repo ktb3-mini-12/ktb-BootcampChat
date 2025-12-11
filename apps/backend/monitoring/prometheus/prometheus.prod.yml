@@ -7,33 +7,49 @@ rule_files:
   - '/etc/prometheus/rules.yml'
 
 scrape_configs:
+  # Prometheus 자기 자신
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
 
-  - job_name: 'spring-boot-app'
+  # Spring Boot API 서버
+  - job_name: 'spring-boot-api'
     metrics_path: '/actuator/prometheus'
     scrape_interval: 5s
     static_configs:
-      - targets: ['IP:PORT']
+      - targets: ['10.0.102.250:5001']
         labels:
-          application: 'ktb-chat-backend'
+          application: 'ktb-chat-api'
           environment: 'production'
 
+  # Spring Boot WebSocket 서버
+  - job_name: 'spring-boot-websocket'
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['10.0.102.9:5001']
+        labels:
+          application: 'ktb-chat-websocket'
+          environment: 'production'
+
+  # MongoDB Exporter (모니터링 서버 내 Docker)
   - job_name: 'mongodb'
     static_configs:
-      - targets: ['IP:PORT']
+      - targets: ['mongodb-exporter:9216']
         labels:
           environment: 'production'
 
+  # Redis Exporter (모니터링 서버 내 Docker)
   - job_name: 'redis'
     static_configs:
-      - targets: ['IP:PORT']
+      - targets: ['redis-exporter:9121']
         labels:
           environment: 'production'
 
+  # Node Exporter - 모든 EC2 서버 (file_sd_configs로 동적 관리)
+  # 서버 추가/제거 시 targets/node-exporters.prod.yml만 수정하면 자동 반영
   - job_name: 'node-exporter'
     file_sd_configs:
       - files:
           - '/etc/prometheus/targets/node-exporters.prod.yml'
-        refresh_interval: 5s
+        refresh_interval: 30s
