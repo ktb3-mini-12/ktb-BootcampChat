@@ -11,11 +11,10 @@ import com.ktb.chatapp.model.Room;
 import com.ktb.chatapp.model.User;
 import com.ktb.chatapp.repository.FileRepository;
 import com.ktb.chatapp.repository.MessageRepository;
-import com.ktb.chatapp.repository.RoomRepository;
-import com.ktb.chatapp.repository.UserRepository;
 import com.ktb.chatapp.util.BannedWordChecker;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
 import com.ktb.chatapp.websocket.socketio.ai.AiService;
+import com.ktb.chatapp.service.CacheService;
 import com.ktb.chatapp.service.SessionService;
 import com.ktb.chatapp.service.SessionValidationResult;
 import com.ktb.chatapp.service.RateLimitService;
@@ -41,8 +40,7 @@ import static org.mockito.Mockito.*;
 class ChatMessageHandlerTest {
 
     @Mock private SocketIOServer socketIOServer;
-    @Mock private RoomRepository roomRepository;
-    @Mock private UserRepository userRepository;
+    @Mock private CacheService cacheService;
     @Mock private FileRepository fileRepository;
     @Mock private AiService aiService;
     @Mock private SessionService sessionService;
@@ -62,7 +60,7 @@ class ChatMessageHandlerTest {
         meterRegistry = new SimpleMeterRegistry();
 
         chatMessageHandler = new ChatMessageHandler(
-                socketIOServer, roomRepository, userRepository, fileRepository,
+                socketIOServer, cacheService, fileRepository,
                 aiService, sessionService, bannedWordChecker, rateLimitService,
                 meterRegistry, messageRepository
         );
@@ -98,8 +96,8 @@ class ChatMessageHandlerTest {
         when(rateLimitService.checkRateLimit(anyString(), anyInt(), any(Duration.class)))
                 .thenReturn(limitResult);
 
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(roomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(cacheService.findUserById(userId)).thenReturn(Optional.of(user));
+        when(cacheService.findRoomById(roomId)).thenReturn(Optional.of(room));
         when(bannedWordChecker.containsBannedWord(anyString())).thenReturn(false);
 
         when(socketIOServer.getRoomOperations(roomId)).thenReturn(broadcastOperations);

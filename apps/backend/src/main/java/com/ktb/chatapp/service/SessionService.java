@@ -19,6 +19,7 @@ public class SessionService {
     private final SessionStore sessionStore;
     public static final long SESSION_TTL_SEC = DurationStyle.detectAndParse(SESSION_TTL).getSeconds();
     private static final long SESSION_TIMEOUT = SESSION_TTL_SEC * 1000;
+    private static final long ACTIVITY_UPDATE_INTERVAL_MS = 60000; // 1분 동안은 DB 업데이트 건너뜀
 
     private String generateSessionId() {
         return UUID.randomUUID().toString().replace("-", "");
@@ -95,9 +96,13 @@ public class SessionService {
             }
 
             // Update last activity
-            session.setLastActivity(now);
-            session.setExpiresAt(Instant.now().plusSeconds(SESSION_TTL_SEC));
-            session = sessionStore.save(session);
+            // 성능 최적화: 매 요청마다 DB에 쓰지 않고, 일정 간격(예: 1분)으로만 업데이트
+            if (now - session.getLastActivity() > ACTIVITY_UPDATE_INTERVAL_MS) {
+                session.setLastActivity(now);
+                session.setExpiresAt(Instant.now().plusSeconds(SESSION_TTL_SEC));
+                session = sessionStore.save(session);
+                log.debug("Session activity updated for user: {}", userId);
+            }
 
             SessionData sessionData = toSessionData(session);
             return SessionValidationResult.valid(sessionData);
