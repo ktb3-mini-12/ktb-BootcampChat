@@ -66,14 +66,10 @@ const ChatMessages = ({
     );
   }, [currentUser?.id]);
 
+  // 정렬 제거: useChatRoom에서 이미 정렬된 상태로 전달됨
   const allMessages = useMemo(() => {
     if (!Array.isArray(messages)) return [];
-
-    // 원본 배열 변경 방지를 위해 복사 후 정렬
-    return [...messages].sort((a, b) => {
-      if (!a?.timestamp || !b?.timestamp) return 0;
-      return new Date(a.timestamp) - new Date(b.timestamp);
-    });
+    return messages;
   }, [messages]);
 
   const renderMessage = useCallback((msg, idx) => {
