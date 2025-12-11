@@ -2,34 +2,45 @@
 # 프로덕션 환경의 Node Exporter 타겟 목록
 # 서버 추가 시 이 파일만 수정하면 자동으로 반영됩니다 (Prometheus 재시작 불필요)
 
+# Frontend
 - targets:
-    - 'IP:PORT'
-  labels:
-    environment: 'production'
-    region: 'ap-northeast-2'
-    cluster: 'backend'
-    service: 'api'
-
-- targets:
-    - 'IP:PORT'
+    - '10.0.102.40:9100'
   labels:
     environment: 'production'
     region: 'ap-northeast-2'
     cluster: 'frontend'
     service: 'next'
 
+# WebSocket Server
 - targets:
-    - 'IP:PORT'
+    - '10.0.102.9:9100'
+  labels:
+    environment: 'production'
+    region: 'ap-northeast-2'
+    cluster: 'backend'
+    service: 'websocket'
+
+# API Server (스케일아웃 시 여기에 추가)
+- targets:
+    - '10.0.102.250:9100'
+  labels:
+    environment: 'production'
+    region: 'ap-northeast-2'
+    cluster: 'backend'
+    service: 'api'
+
+# Database Server
+- targets:
+    - '10.0.102.54:9100'
   labels:
     environment: 'production'
     region: 'ap-northeast-2'
     cluster: 'database'
-    service: 'mongodb'
-
+    service: 'mongodb-redis'
 
 # Monitoring Server
 - targets:
-    - 'IP:PORT'
+    - '10.0.102.66:9100'
   labels:
     environment: 'production'
     region: 'ap-northeast-2'

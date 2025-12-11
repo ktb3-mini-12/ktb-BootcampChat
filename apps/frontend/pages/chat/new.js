@@ -26,35 +26,19 @@ function NewChatRoom() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const joinRoom = async (roomId, password) => {
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/rooms/${roomId}/join`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-auth-token': currentUser.token,
-          'x-session-id': currentUser.sessionId
-        },
-        body: JSON.stringify({ password })
-      });
+  // 유효성 검사
+  const nameLength = formData.name.trim().length;
+  const isNameTooShort = nameLength > 0 && nameLength < 2;
+  const isNameValid = nameLength >= 2;
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || '채팅방 입장에 실패했습니다.');
-      }
-
-      router.push(`/chat/${roomId}`);
-    } catch (error) {
-      console.error('Room join error:', error);
-      throw error;
-    }
-  };
+  // [삭제됨] joinRoom 함수는 더 이상 여기서 필요하지 않습니다.
+  // 방 생성 시 백엔드가 자동으로 유저를 참가시키기 때문입니다.
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!formData.name.trim()) {
-      setError('채팅방 이름을 입력해주세요.');
+    if (!isNameValid) {
+      setError('채팅방 이름은 2글자 이상이어야 합니다.');
       return;
     }
 
@@ -72,6 +56,7 @@ function NewChatRoom() {
       setLoading(true);
       setError('');
 
+      // 1. 방 생성 요청
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/rooms`, {
         method: 'POST',
         headers: {
@@ -87,20 +72,35 @@ function NewChatRoom() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        if (response.status === 401) {
-          throw new Error('인증이 만료되었습니다. 다시 로그인해주세요.');
+
+        let errorMessage = '채팅방 생성에 실패했습니다.';
+        if (errorData.errors && Array.isArray(errorData.errors) && errorData.errors.length > 0) {
+          errorMessage = errorData.errors[0].message;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
         }
-        throw new Error(errorData.message || '채팅방 생성에 실패했습니다.');
+        if (response.status === 401) {
+          errorMessage = '인증이 만료되었습니다. 다시 로그인해주세요.';
+        }
+        throw new Error(errorMessage);
       }
 
       const { data } = await response.json();
-      await joinRoom(data._id, formData.hasPassword ? formData.password : undefined);
+
+      // [핵심 수정]
+      // await joinRoom(...) <--- 이 불필요한 요청을 삭제했습니다.
+      // 방금 만든 방의 ID(data._id)를 가지고 바로 채팅방으로 이동합니다.
+      router.push(`/chat/${data._id}`);
 
     } catch (error) {
-      console.error('Room creation/join error:', error);
+      console.error('Room creation error:', error);
       setError(error.message);
     } finally {
-      setLoading(false);
+      // 페이지 이동 중에는 로딩 상태를 풀지 않아도 됩니다 (UX상 더 자연스러움)
+      // 에러가 났을 때만 로딩을 풉니다.
+      if (error) {
+        setLoading(false);
+      }
     }
   };
 
@@ -142,14 +142,23 @@ function NewChatRoom() {
                 id="room-name"
                 required
                 size="lg"
-                placeholder="채팅방 이름을 입력하세요"
+                placeholder="채팅방 이름을 입력하세요 (2자 이상)"
                 value={formData.name}
-                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                invalid={isNameTooShort}
+                onChange={(e) => {
+                  setFormData(prev => ({ ...prev, name: e.target.value }));
+                  if (error) setError('');
+                }}
                 disabled={loading}
                 data-testid="chat-room-name-input"
               />
             </Box>
-            <Field.Error match="valueMissing">채팅방 이름을 입력해주세요.</Field.Error>
+
+            {isNameTooShort && (
+               <Text typography="body3" color="var(--vapor-color-text-danger)">
+                 이름은 최소 2글자 이상이어야 합니다.
+               </Text>
+            )}
           </Field.Root>
 
           <Field.Root>
@@ -190,7 +199,11 @@ function NewChatRoom() {
           <Button
             type="submit"
             size="lg"
-            disabled={loading || !formData.name.trim() || (formData.hasPassword && !formData.password)}
+            disabled={
+                loading ||
+                !isNameValid ||
+                (formData.hasPassword && !formData.password)
+            }
             data-testid="create-chat-room-button"
           >
             {loading ? '생성 중...' : '채팅방 만들기'}
