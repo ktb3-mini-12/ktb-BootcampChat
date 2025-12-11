@@ -32,44 +32,31 @@ public class MessageResponseMapper {
      * @return MessageResponse DTO
      */
     public MessageResponse mapToMessageResponse(Message message, User sender) {
-        MessageResponse.MessageResponseBuilder builder = MessageResponse.builder()
-                .id(message.getId())
-                .content(message.getContent())
-                .type(message.getType())
-                .timestamp(message.toTimestampMillis())
-                .roomId(message.getRoomId())
-                .reactions(message.getReactions() != null ?
-                        message.getReactions() : new HashMap<>())
-                .readers(message.getReaders() != null ?
-                        message.getReaders() : new ArrayList<>());
-
-        // 발신자 정보 설정
+        UserResponse senderResponse = null;
         if (sender != null) {
-            builder.sender(UserResponse.builder()
-                    .id(sender.getId())
-                    .name(sender.getName())
-                    .email(sender.getEmail())
-                    .profileImage(sender.getProfileImage())
-                    .build());
+            senderResponse = new UserResponse(
+                    sender.getId(),
+                    sender.getName(),
+                    sender.getEmail(),
+                    sender.getProfileImage()
+            );
         }
 
         // 파일 정보 설정
-        Optional.ofNullable(message.getFileId())
+        FileResponse fileResponse = Optional.ofNullable(message.getFileId())
                 .flatMap(fileRepository::findById)
-                .map(file -> FileResponse.builder()
-                        .id(file.getId())
-                        .filename(file.getFilename())
-                        .originalname(file.getOriginalname())
-                        .mimetype(file.getMimetype())
-                        .size(file.getSize())
-                        .build())
-                .ifPresent(builder::file);
+                .map(file -> new FileResponse(file.getFilename(), file.getOriginalname(), file.getMimetype(), file.getSize()))
+                .orElse(null);
 
-        // 메타데이터 설정
-        if (message.getMetadata() != null) {
-            builder.metadata(message.getMetadata());
-        }
-
-        return builder.build();
+        return new MessageResponse(
+                message.getId(),
+                message.getContent(),
+                senderResponse,
+                message.getType(),
+                fileResponse,
+                message.toTimestampMillis(),
+                message.getReactions() != null ? message.getReactions() : new HashMap<>(),
+                message.getReaders() != null ? message.getReaders() : new ArrayList<>()
+        );
     }
 }

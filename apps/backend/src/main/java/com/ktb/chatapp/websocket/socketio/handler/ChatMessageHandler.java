@@ -148,7 +148,7 @@ public class ChatMessageHandler {
 
             String messageType = data.getMessageType();
             Message message = switch (messageType) {
-                case "file" -> handleFileMessage(roomId, socketUser.id(), messageContent, data.getFileData());
+                case "file" -> handleFileMessage(roomId, socketUser.id(), messageContent, data.fileData());
                 case "text" -> handleTextMessage(roomId, socketUser.id(), messageContent);
                 default -> throw new IllegalArgumentException("Unsupported message type: " + messageType);
             };
@@ -235,22 +235,23 @@ public class ChatMessageHandler {
     }
 
     private MessageResponse createMessageResponse(Message message, User sender) {
-        var messageResponse = new MessageResponse();
-        messageResponse.setId(message.getId());
-        messageResponse.setRoomId(message.getRoomId());
-        messageResponse.setContent(message.getContent());
-        messageResponse.setType(message.getType());
-        messageResponse.setTimestamp(message.toTimestampMillis());
-        messageResponse.setReactions(message.getReactions() != null ? message.getReactions() : Collections.emptyMap());
-        messageResponse.setSender(UserResponse.from(sender));
-        messageResponse.setMetadata(message.getMetadata());
-
+        FileResponse fileResponse = null;
         if (message.getFileId() != null) {
-            fileRepository.findById(message.getFileId())
-                    .ifPresent(file -> messageResponse.setFile(FileResponse.from(file)));
+            fileResponse = fileRepository.findById(message.getFileId())
+                    .map(FileResponse::from)
+                    .orElse(null);
         }
 
-        return messageResponse;
+        return new MessageResponse(
+                message.getId(),
+                message.getContent(),
+                UserResponse.from(sender),
+                message.getType(),
+                fileResponse,
+                message.toTimestampMillis(),
+                message.getReactions() != null ? message.getReactions() : Collections.emptyMap(),
+                message.getReaders() != null ? message.getReaders() : Collections.emptyList()
+        );
     }
 
     // Metrics helper methods

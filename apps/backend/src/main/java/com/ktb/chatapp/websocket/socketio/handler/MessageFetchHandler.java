@@ -60,8 +60,8 @@ public class MessageFetchHandler {
             FetchMessagesResponse result = messageLoader.loadMessages(data, userId);
             
             log.debug("Previous messages loaded - room: {}, count: {}, hasMore: {}",
-                    data.roomId(), result.getMessages().size(),
-                    result.isHasMore());
+                    data.roomId(), result.messages().size(),
+                    result.hasMore());
             
             client.sendEvent(PREVIOUS_MESSAGES_LOADED, result);
 

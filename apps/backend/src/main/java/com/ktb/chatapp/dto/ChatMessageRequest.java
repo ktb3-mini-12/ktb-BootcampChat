@@ -1,23 +1,14 @@
 package com.ktb.chatapp.dto;
 
 import java.util.Map;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class ChatMessageRequest {
-
-    private String room;
-    private String type;
-    private String content;
-    private String msg;
-    private Map<String, Object> fileData;
-
+public record ChatMessageRequest(
+		String room,
+		String type,
+		String content,
+		String msg,
+		Map<String, Object> fileData
+) {
     /**
      * Content 필드가 비어있으면 msg 필드를 반환하는 정규화된 content를 제공
      */

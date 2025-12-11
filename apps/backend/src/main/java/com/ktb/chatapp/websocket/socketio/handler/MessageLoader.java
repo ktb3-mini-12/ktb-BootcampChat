@@ -42,10 +42,7 @@ public class MessageLoader {
             return loadMessagesInternal(data.roomId(), data.limit(BATCH_SIZE), data.before(LocalDateTime.now()), userId);
         } catch (Exception e) {
             log.error("Error loading initial messages for room {}", data.roomId(), e);
-            return FetchMessagesResponse.builder()
-                    .messages(emptyList())
-                    .hasMore(false)
-                    .build();
+            return new FetchMessagesResponse(emptyList(), false);
         }
     }
 
@@ -80,10 +77,7 @@ public class MessageLoader {
         log.debug("Messages loaded - roomId: {}, limit: {}, count: {}, hasMore: {}",
                 roomId, limit, messageResponses.size(), hasMore);
 
-        return FetchMessagesResponse.builder()
-                .messages(messageResponses)
-                .hasMore(hasMore)
-                .build();
+        return new FetchMessagesResponse(messageResponses, hasMore);
     }
 
     /**

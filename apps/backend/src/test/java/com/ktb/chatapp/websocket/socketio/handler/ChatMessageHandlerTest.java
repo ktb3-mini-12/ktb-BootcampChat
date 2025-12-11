@@ -89,11 +89,7 @@ class ChatMessageHandlerTest {
         when(roomRepository.findById("room-1")).thenReturn(Optional.of(room));
 
         ChatMessageRequest request =
-                ChatMessageRequest.builder()
-                        .room("room-1")
-                        .type("text")
-                        .content("bad word")
-                        .build();
+                new ChatMessageRequest("room-1", "text", "bad word", null, null);
 
         when(bannedWordChecker.containsBannedWord("bad word")).thenReturn(true);
 

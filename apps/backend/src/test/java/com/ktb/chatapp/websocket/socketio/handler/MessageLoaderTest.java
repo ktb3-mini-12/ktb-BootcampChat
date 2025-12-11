@@ -114,8 +114,8 @@ class MessageLoaderTest {
         FetchMessagesResponse result = messageLoader.loadMessages(req, userId);
         
         // Then: 결과는 오름차순으로 정렬되어야 함
-        assertThat(result.getMessages()).hasSize(30);
-        assertThat(result.isHasMore()).isTrue();
+        assertThat(result.messages()).hasSize(30);
+        assertThat(result.hasMore()).isTrue();
         
         // 시간순 정렬 확인 (오름차순: 오래된 것 → 최신 것)
         // [50시간 전, 49시간 전, ..., 21시간 전]
@@ -126,8 +126,7 @@ class MessageLoaderTest {
         List<Message> messages = new ArrayList<>(first30Messages.reversed());
         
         Pageable pageable = PageRequest.of(0, 30, Sort.by("timestamp").descending());
-        Page<Message> messagePage = new PageImpl<>(messages, pageable, 50);
-        return messagePage;
+		return new PageImpl<>(messages, pageable, 50);
     }
     
     @Test
@@ -149,7 +148,7 @@ class MessageLoaderTest {
         FetchMessagesResponse result = messageLoader.loadMessages(req, userId);
         
         // Then: 결과는 오름차순으로 정렬되어야 함
-        assertThat(result.getMessages()).hasSize(30);
+        assertThat(result.messages()).hasSize(30);
         
         // 시간순 정렬 확인 (오름차순: 오래된 것 → 최신 것)
         // [30시간 전, 29시간 전, ..., 1시간 전]
@@ -157,9 +156,9 @@ class MessageLoaderTest {
     }
     
     private static void verifyAscending(FetchMessagesResponse result) {
-        for (int i = 0; i < result.getMessages().size() - 1; i++) {
-            long current = result.getMessages().get(i).getTimestamp();
-            long next = result.getMessages().get(i + 1).getTimestamp();
+        for (int i = 0; i < result.messages().size() - 1; i++) {
+            long current = result.messages().get(i).timestamp();
+            long next = result.messages().get(i + 1).timestamp();
             assertThat(current).isLessThanOrEqualTo(next);
         }
     }
@@ -174,7 +173,7 @@ class MessageLoaderTest {
         FetchMessagesRequest req = new FetchMessagesRequest(roomId, 30, null);
         FetchMessagesResponse result = messageLoader.loadMessages(req, userId);
         
-        assertThat(result.getMessages()).isEmpty();
-        assertThat(result.isHasMore()).isFalse();
+        assertThat(result.messages()).isEmpty();
+        assertThat(result.hasMore()).isFalse();
     }
 }

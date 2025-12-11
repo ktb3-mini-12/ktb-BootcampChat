@@ -38,13 +38,13 @@ public class MessageReactionHandler {
                 return;
             }
 
-            Message message = messageRepository.findById(data.getMessageId()).orElse(null);
+            Message message = messageRepository.findById(data.messageId()).orElse(null);
             if (message == null) {
                 client.sendEvent(ERROR, Map.of("message", "메시지를 찾을 수 없습니다."));
                 return;
             }
 
-            switch (data.getType()) {
+            switch (data.type()) {
                 case "add" -> message.addReaction(data.getReaction(), userId);
                 case "remove" -> message.removeReaction(data.getReaction(), userId);
                 case null, default -> {
@@ -54,7 +54,7 @@ public class MessageReactionHandler {
             }
 
             log.debug("Message reaction processed - type: {}, reaction: {}, messageId: {}, userId: {}",
-                data.getType(), data.getReaction(), message.getId(), userId);
+                data.type(), data.getReaction(), message.getId(), userId);
 
             messageRepository.save(message);
 

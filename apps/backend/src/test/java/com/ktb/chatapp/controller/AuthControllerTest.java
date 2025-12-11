@@ -50,10 +50,7 @@ public class AuthControllerTest {
                         .build());
 
         String email = "test" + System.currentTimeMillis() + "@example.com";
-        RegisterRequest registerRequest = new RegisterRequest();
-        registerRequest.setName("Test User");
-        registerRequest.setEmail(email);
-        registerRequest.setPassword("password");
+        RegisterRequest registerRequest = new RegisterRequest("Test User", email, "password");
 
         mockMvc.perform(post("/api/auth/register")
                         .with(csrf())
@@ -77,11 +74,8 @@ public class AuthControllerTest {
 
         String email = "test" + System.currentTimeMillis() + "@example.com";
 
-        RegisterRequest registerRequest = new RegisterRequest();
-        registerRequest.setName("Test User");
-        registerRequest.setEmail(email);
-        registerRequest.setPassword("password");
-
+        RegisterRequest registerRequest = new RegisterRequest("Test User",  email, "password");
+        
         mockMvc.perform(post("/api/auth/register")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
