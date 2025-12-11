@@ -38,7 +38,6 @@ import static com.ktb.chatapp.websocket.socketio.SocketIOEvents.*;
 @ConditionalOnProperty(name = "socketio.enabled", havingValue = "true", matchIfMissing = true)
 @RequiredArgsConstructor
 public class ChatMessageHandler {
-
 	private final SocketIOServer socketIOServer;
 	private final MessageRepository messageRepository;
 	private final RoomRepository roomRepository;
@@ -209,117 +208,13 @@ public class ChatMessageHandler {
 		message.setTimestamp(LocalDateTime.now());
 		message.setMentions(messageContent.aiMentions());
         
-        try {
-            User sender = userRepository.findById(socketUser.id()).orElse(null);
-            if (sender == null) {
-                recordError("user_not_found");
-                client.sendEvent(ERROR, Map.of(
-                    "code", "MESSAGE_ERROR",
-                    "message", "User not found"
-                ));
-                timerSample.stop(createTimer("error", "user_not_found"));
-                return;
-            }
-
-            String roomId = data.getRoom();
-            Room room = roomRepository.findById(roomId).orElse(null);
-            if (room == null || !room.getParticipantIds().contains(socketUser.id())) {
-                recordError("room_access_denied");
-                client.sendEvent(ERROR, Map.of(
-                    "code", "MESSAGE_ERROR",
-                    "message", "채팅방 접근 권한이 없습니다."
-                ));
-                timerSample.stop(createTimer("error", "room_access_denied"));
-                return;
-            }
-
-            MessageContent messageContent = data.getParsedContent();
-
-            log.debug("Message received - type: {}, room: {}, userId: {}, hasFileData: {}",
-                data.getMessageType(), roomId, socketUser.id(), data.hasFileData());
-
-            if (bannedWordChecker.containsBannedWord(messageContent.getTrimmedContent())) {
-                recordError("banned_word");
-                client.sendEvent(ERROR, Map.of(
-                        "code", "MESSAGE_REJECTED",
-                        "message", "금칙어가 포함된 메시지는 전송할 수 없습니다."
-                ));
-                timerSample.stop(createTimer("error", "banned_word"));
-                return;
-            }
-
-            String messageType = data.getMessageType();
-            Message message = switch (messageType) {
-                case "file" -> handleFileMessage(roomId, socketUser.id(), messageContent, data.fileData());
-                case "text" -> handleTextMessage(roomId, socketUser.id(), messageContent);
-                default -> throw new IllegalArgumentException("Unsupported message type: " + messageType);
-            };
-
-            if (message == null) {
-                log.warn("Empty message - ignoring. room: {}, userId: {}, messageType: {}", roomId, socketUser.id(), messageType);
-                timerSample.stop(createTimer("ignored", messageType));
-                return;
-            }
-
-            // 브로드캐스트 먼저 실행 (실시간 응답 보장)
-            socketIOServer.getRoomOperations(roomId)
-                    .sendEvent(MESSAGE, createMessageResponse(message, sender));
-
-            // MongoDB에 저장
-            messageRepository.save(message);
-
-            // AI 멘션 처리
-            aiService.handleAIMentions(roomId, socketUser.id(), messageContent);
-
-            sessionService.updateLastActivity(socketUser.id());
-
-            // Record success metrics
-            recordMessageSuccess(messageType);
-            timerSample.stop(createTimer("success", messageType));
-
-            log.debug("Message processed - type: {}, room: {}",
-                message.getType(), roomId);
-
-        } catch (Exception e) {
-            recordError("exception");
-            log.error("Message handling error", e);
-            client.sendEvent(ERROR, Map.of(
-                "code", "MESSAGE_ERROR",
-                "message", e.getMessage() != null ? e.getMessage() : "메시지 전송 중 오류가 발생했습니다."
-            ));
-            timerSample.stop(createTimer("error", "exception"));
-        }
-    }
-
-    private Message handleFileMessage(String roomId, String userId, MessageContent messageContent, Map<String, Object> fileData) {
-        if (fileData == null || fileData.get("_id") == null) {
-            throw new IllegalArgumentException("파일 데이터가 올바르지 않습니다.");
-        }
-
-        String fileId = (String) fileData.get("_id");
-        File file = fileRepository.findById(fileId).orElse(null);
-
-        if (file == null || !file.getUser().equals(userId)) {
-            throw new IllegalStateException("파일을 찾을 수 없거나 접근 권한이 없습니다.");
-        }
-
-        Message message = new Message();
-        message.setId(UUID.randomUUID().toString());
-        message.setRoomId(roomId);
-        message.setSenderId(userId);
-        message.setType(MessageType.file);
-        message.setFileId(fileId);
-        message.setContent(messageContent.getTrimmedContent());
-        message.setTimestamp(LocalDateTime.now());
-        message.setMentions(messageContent.aiMentions());
-
-		// 메타데이터는 Map<String, Object>
-		Map<String, Object> metadata = new HashMap<>();
-		metadata.put("fileType", file.getMimetype());
-		metadata.put("fileSize", file.getSize());
-		metadata.put("originalName", file.getOriginalname());
-		metadata.put("fileName", file.getFilename());
-		message.setMetadata(metadata);
+        // 메타데이터는 Map<String, Object>
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("fileType", file.getMimetype());
+        metadata.put("fileSize", file.getSize());
+        metadata.put("originalName", file.getOriginalname());
+        metadata.put("fileName", file.getFilename());
+        message.setMetadata(metadata);
 
         return message;
     }
