@@ -31,6 +31,13 @@ npm run dev              # Development server
 npm run build            # Production build
 ```
 
+### E2E Tests (e2e/)
+```bash
+npx playwright test                    # Run all E2E tests
+npx playwright test tests/chat.spec.js # Run specific test file
+npx playwright test --headed           # Run with browser visible
+```
+
 ### Monitoring Stack
 ```bash
 make o11y-up             # Start Prometheus + Grafana
@@ -47,48 +54,46 @@ make o11y-down           # Stop monitoring
 - Redis: 6379
 
 ### Backend Structure (apps/backend/src/main/java/com/ktb/chatapp/)
-- **controller/** - REST endpoints
-- **service/** - Business logic (RedisChatService for caching)
-- **repository/** - MongoDB data access
-- **websocket/socketio/handler/** - Socket.IO event handlers (ChatMessageHandler)
-- **security/** - JWT authentication
-- **config/** - Spring configuration (RedisConfig, SocketIOConfig)
-- **model/** - Domain entities
+- **controller/** - REST endpoints (UserController, RoomController, FileController)
+- **service/** - Business logic (UserService, FileService, SessionService)
+- **repository/** - MongoDB data access (UserRepository, MessageRepository, RoomRepository)
+- **websocket/socketio/** - Socket.IO event handling
+  - **handler/** - Event handlers (ChatMessageHandler, RoomJoinHandler, MessageReadHandler)
+  - **ai/** - AI streaming response handling (AiService, AiStreamHandler)
+- **security/** - JWT authentication (CustomBearerTokenResolver, SessionAwareJwtAuthenticationConverter)
+- **config/** - Spring configuration (SecurityConfig, SocketIOConfig, MongoConfig)
+- **model/** - Domain entities (User, Message, Room, File, Session)
 - **dto/** - Request/response objects
 
 ### Frontend Structure (apps/frontend/)
-- **pages/** - Next.js routing (index.js, chat/[room].js)
-- **components/** - React components (ChatInput.js, etc.)
-- **services/** - API client and Socket.IO connection
-- **contexts/** - React Context for state management
+- **pages/** - Next.js routing
+  - `index.js` - Landing/login redirect
+  - `chat/index.js` - Chat room list
+  - `chat/[room].js` - Individual chat room
+  - `chat/new.js` - Create new room
+- **components/** - React components (ChatMessages, ChatInput, UserMessage, FileMessage)
 - **hooks/** - Custom React hooks
-
-### Technology Stack
-- **Backend**: Java 21, Spring Boot 3.5, MongoDB 8, Redis 7.2, Netty Socket.IO
-- **Frontend**: Next.js 15, React 18, Tailwind CSS, Socket.IO Client
-- **Testing**: JUnit 5, Testcontainers, Spring Test
+  - `useChatRoom.js` - Main chat room state management (orchestrates other hooks)
+  - `useSocketHandling.js` - Socket.IO connection management
+  - `useMessageHandling.js` - Message sending/receiving
+  - `useInfiniteScroll.js` - Pagination via IntersectionObserver
+  - `useAutoScroll.js` - Auto-scroll to new messages
+- **services/** - API client (`api.js`) and Socket.IO connection (`socket.js`)
+- **contexts/** - React Context (AuthContext for authentication state)
 
 ### Key Patterns
 - Virtual threads enabled for concurrent request handling
 - Redis TTL-based rate limiting
 - AES-256 encryption for sensitive data
 - JWT + OAuth2 Resource Server authentication
-- Socket.IO on separate port from REST API
+- Socket.IO runs on separate port (5002) from REST API (5001)
+- Frontend uses custom hooks composition pattern (useChatRoom orchestrates useSocketHandling, useMessageHandling, etc.)
 
 ## Testing
 
 Backend tests use Testcontainers for MongoDB and Redis. Test files are in `apps/backend/src/test/java/`.
 
-```bash
-# Run all tests
-make test
-
-# Run specific test class
-./mvnw test -Dtest=ChatMessageHandlerTest
-
-# Run specific test method
-./mvnw test -Dtest=ChatMessageHandlerTest#testMethodName
-```
+E2E tests use Playwright. Test files are in `e2e/tests/` with reusable actions in `e2e/actions/`.
 
 ## Environment Variables
 
