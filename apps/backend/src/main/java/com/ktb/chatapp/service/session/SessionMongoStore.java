@@ -4,6 +4,7 @@ import com.ktb.chatapp.model.Session;
 import com.ktb.chatapp.repository.SessionRepository;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.stereotype.Component;
 
 /**
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Component;
  * Uses SessionRepository for persistence.
  */
 @Component
+@ConditionalOnMissingBean(SessionStore.class)
 @RequiredArgsConstructor
 public class SessionMongoStore implements SessionStore {
     
