@@ -111,19 +111,10 @@ public class SessionService {
     public void updateLastActivity(String userId) {
         try {
             if (userId == null) {
-                log.warn("updateLastActivity called with null userId");
                 return;
             }
-
-            Session session = sessionStore.findByUserId(userId).orElse(null);
-            if (session == null) {
-                log.debug("No session found to update last activity for user: {}", userId);
-                return;
-            }
-
-            session.setLastActivity(Instant.now().toEpochMilli());
-            session.setExpiresAt(Instant.now().plusSeconds(SESSION_TTL_SEC));
-            sessionStore.save(session);
+			
+			sessionStore.refreshExpiration(userId, SESSION_TTL_SEC);
             
         } catch (Exception e) {
             log.error("Failed to update session activity for user: {}", userId, e);

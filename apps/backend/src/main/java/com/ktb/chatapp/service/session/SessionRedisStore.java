@@ -75,4 +75,11 @@ public class SessionRedisStore implements SessionStore {
         long ttl = expiresAt.getEpochSecond() - Instant.now().getEpochSecond();
         return Math.max(1, ttl);
     }
+	
+	@Override
+	public void refreshExpiration(String userId, long ttlSeconds) {
+		if (userId == null) return;
+		RBucket<Session> bucket = redissonClient.getBucket(buildKey(userId), new JsonJacksonCodec(objectMapper));
+		bucket.expire(ttlSeconds, TimeUnit.SECONDS);
+	}
 }
