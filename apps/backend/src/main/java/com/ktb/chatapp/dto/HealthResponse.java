@@ -12,20 +12,19 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class HealthResponse {
-    private boolean success;
-    @Builder.Default
-    private String timestamp = Instant.now().toString();
-    private Map<String, ServiceHealth> services;
-    
-    @JsonIgnore
-    private LocalDateTime lastActivity;
-    
+public record HealthResponse (
+		boolean isSuccess,
+		String timestamp,
+		Map<String, ServiceHealth> services,
+		@JsonIgnore
+		LocalDateTime lastActivity
+) {
+	
+	public HealthResponse {
+		timestamp = Instant.now().toString();
+	}
+	
     @JsonGetter("lastActivity")
     public String getLastActivity() {
         if (lastActivity == null) {

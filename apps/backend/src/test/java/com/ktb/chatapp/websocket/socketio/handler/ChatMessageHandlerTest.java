@@ -59,7 +59,6 @@ class ChatMessageHandlerTest {
 
     @BeforeEach
     void setUp() {
-        // SimpleMeterRegistry를 사용하여 실제 메트릭 동작 지원
         meterRegistry = new SimpleMeterRegistry();
 
         chatMessageHandler = new ChatMessageHandler(
@@ -77,13 +76,8 @@ class ChatMessageHandlerTest {
         String userId = "user1";
         String content = "Hello World";
 
-        // [수정 완료] DTO 구조 반영
-        ChatMessageRequest request = new ChatMessageRequest();
-        request.setRoom(roomId);
-        request.setType("text"); // Lombok이 생성한 올바른 setter 사용
-        request.setContent(content);
+        ChatMessageRequest request = new ChatMessageRequest(roomId, "text", content, null, null);
 
-        // [수정 완료] SocketUser 생성자 (id, username, email, sessionId) 4개 파라미터 적용
         SocketUser socketUser = new SocketUser(userId, "Tester", "test@example.com", "session1");
 
         User user = new User();
@@ -96,12 +90,10 @@ class ChatMessageHandlerTest {
 
         when(client.get("user")).thenReturn(socketUser);
 
-        // [수정 완료] SessionValidationResult 생성자 이슈 해결 -> Mock 사용이 가장 안전
         SessionValidationResult validResult = mock(SessionValidationResult.class);
         when(validResult.isValid()).thenReturn(true);
         when(sessionService.validateSession(anyString(), anyString())).thenReturn(validResult);
 
-        // [수정 완료] RateLimitCheckResult 생성자 (6개 파라미터) 적용
         RateLimitCheckResult limitResult = new RateLimitCheckResult(true, 10, 10, 0, 0, 1);
         when(rateLimitService.checkRateLimit(anyString(), anyInt(), any(Duration.class)))
                 .thenReturn(limitResult);

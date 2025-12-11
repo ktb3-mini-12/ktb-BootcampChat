@@ -93,7 +93,7 @@ public class AuthController {
         if (errors != null) return errors;
         
         // Check existing user
-        if (userRepository.findByEmail(registerRequest.getEmail()).isPresent()) {
+        if (userRepository.findByEmail(registerRequest.email()).isPresent()) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(StandardResponse.error("이미 등록된 이메일입니다."));
         }
@@ -101,18 +101,20 @@ public class AuthController {
         try {
             // Create user
             User user = User.builder()
-                    .name(registerRequest.getName())
-                    .email(registerRequest.getEmail().toLowerCase())
-                    .password(passwordEncoder.encode(registerRequest.getPassword()))
+                    .name(registerRequest.name())
+                    .email(registerRequest.email().toLowerCase())
+                    .password(passwordEncoder.encode(registerRequest.password()))
                     .build();
 
             user = userRepository.save(user);
 
-            LoginResponse response = LoginResponse.builder()
-                    .success(true)
-                    .message("회원가입이 완료되었습니다.")
-                    .user(new AuthUserDto(user.getId(), user.getName(), user.getEmail(), user.getProfileImage()))
-                    .build();
+            LoginResponse response = new LoginResponse(
+                    true,
+                    null,
+                    null,
+                    new AuthUserDto(user.getId(), user.getName(), user.getEmail(), user.getProfileImage()),
+                    "회원가입이 완료되었습니다."
+            );
 
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(response);
@@ -157,19 +159,16 @@ public class AuthController {
         
         try {
             // Authenticate user
-            User user = userRepository.findByEmail(loginRequest.getEmail().toLowerCase())
+            User user = userRepository.findByEmail(loginRequest.email().toLowerCase())
                     .orElseThrow(() -> new UsernameNotFoundException("User not found"));
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
                             user.getEmail(),
-                            loginRequest.getPassword()
+                            loginRequest.password()
                     )
             );
 
             SecurityContextHolder.getContext().setAuthentication(authentication);
-            
-            // 단일 세션 정책을 위해 기존 세션 제거
-            sessionService.removeAllUserSessions(user.getId());
 
             // Create new session
             SessionMetadata metadata = new SessionMetadata(
@@ -188,12 +187,13 @@ public class AuthController {
                 user.getId()
             );
 
-            LoginResponse response = LoginResponse.builder()
-                    .success(true)
-                    .token(token)
-                    .sessionId(sessionInfo.getSessionId())
-                    .user(new AuthUserDto(user.getId(), user.getName(), user.getEmail(), user.getProfileImage()))
-                    .build();
+            LoginResponse response = new LoginResponse(
+                    true,
+                    token,
+                    sessionInfo.getSessionId(),
+                    new AuthUserDto(user.getId(), user.getName(), user.getEmail(), user.getProfileImage()),
+                    null
+            );
 
             return ResponseEntity.ok()
                     .header("Authorization", "Bearer " + token)
@@ -356,8 +356,7 @@ public class AuthController {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                         .body(new TokenRefreshResponse(false, "사용자를 찾을 수 없습니다.", null, null));
             }
-
-
+			
             // 세션 유효성 검증
             var user = userOpt.get();
             if (!sessionService.validateSession(user.getId(), sessionId).isValid()) {

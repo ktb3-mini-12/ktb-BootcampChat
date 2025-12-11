@@ -37,7 +37,7 @@ public class SocketIOEventListener {
     public void handleRoomCreatedEvent(RoomCreatedEvent event) {
         try {
             socketIOServer.getRoomOperations("room-list").sendEvent(ROOM_CREATED, event.getRoomResponse());
-            log.info("roomCreated 이벤트 발송: roomId={}", event.getRoomResponse().getId());
+            log.info("roomCreated 이벤트 발송: roomId={}", event.getRoomResponse().id());
         } catch (Exception e) {
             log.error("roomCreated 이벤트 발송 실패", e);
         }
