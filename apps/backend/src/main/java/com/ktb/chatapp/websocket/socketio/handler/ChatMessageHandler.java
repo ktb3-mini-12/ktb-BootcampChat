@@ -210,7 +210,14 @@ public class ChatMessageHandler {
         message.setContent(messageContent.getTrimmedContent());
         message.setTimestamp(LocalDateTime.now());
         message.setMentions(messageContent.aiMentions());
-        message.setMetadata(metadata);
+
+		// 메타데이터는 Map<String, Object>
+		Map<String, Object> metadata = new HashMap<>();
+		metadata.put("fileType", file.getMimetype());
+		metadata.put("fileSize", file.getSize());
+		metadata.put("originalName", file.getOriginalname());
+		metadata.put("fileName", file.getFilename());
+		message.setMetadata(metadata);
 
         return message;
     }
