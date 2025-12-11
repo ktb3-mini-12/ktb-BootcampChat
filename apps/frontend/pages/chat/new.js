@@ -26,6 +26,13 @@ function NewChatRoom() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // [UX 개선] 클라이언트 측 유효성 검사 (실시간)
+  const nameLength = formData.name.trim().length;
+  // 1글자 입력 시 경고 (0글자일 땐 경고 안 뜸)
+  const isNameTooShort = nameLength > 0 && nameLength < 2;
+  // 2글자 이상일 때만 유효
+  const isNameValid = nameLength >= 2;
+
   const joinRoom = async (roomId, password) => {
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/rooms/${roomId}/join`, {
@@ -46,15 +53,16 @@ function NewChatRoom() {
       router.push(`/chat/${roomId}`);
     } catch (error) {
       console.error('Room join error:', error);
-      throw error;
+      throw error; // 상위 catch로 전달
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!formData.name.trim()) {
-      setError('채팅방 이름을 입력해주세요.');
+    // 클라이언트 측 방어: 2글자 미만이면 요청 자체를 막음
+    if (!isNameValid) {
+      setError('채팅방 이름은 2글자 이상이어야 합니다.');
       return;
     }
 
@@ -87,10 +95,25 @@ function NewChatRoom() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        if (response.status === 401) {
-          throw new Error('인증이 만료되었습니다. 다시 로그인해주세요.');
+
+        // [핵심 수정] 서버 에러(객체)를 안전하게 문자열로 변환
+        let errorMessage = '채팅방 생성에 실패했습니다.';
+
+        // 1. 유효성 검사 에러 배열 파싱 (errors: [{ field: "name", message: "..." }])
+        if (errorData.errors && Array.isArray(errorData.errors) && errorData.errors.length > 0) {
+          errorMessage = errorData.errors[0].message;
         }
-        throw new Error(errorData.message || '채팅방 생성에 실패했습니다.');
+        // 2. 일반 메시지 필드
+        else if (errorData.message) {
+          errorMessage = errorData.message;
+        }
+
+        if (response.status === 401) {
+          errorMessage = '인증이 만료되었습니다. 다시 로그인해주세요.';
+        }
+
+        // 반드시 문자열(String)로 던져서 리액트 렌더링 에러(#130) 방지
+        throw new Error(errorMessage);
       }
 
       const { data } = await response.json();
@@ -98,6 +121,7 @@ function NewChatRoom() {
 
     } catch (error) {
       console.error('Room creation/join error:', error);
+      // 여기서 error.message는 위에서 우리가 가공한 깨끗한 문자열입니다.
       setError(error.message);
     } finally {
       setLoading(false);
@@ -142,14 +166,29 @@ function NewChatRoom() {
                 id="room-name"
                 required
                 size="lg"
-                placeholder="채팅방 이름을 입력하세요"
+                placeholder="채팅방 이름을 입력하세요 (2자 이상)"
                 value={formData.name}
-                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                // [UX 추가] 1글자일 때 빨간 테두리 표시
+                invalid={isNameTooShort}
+                onChange={(e) => {
+                  setFormData(prev => ({ ...prev, name: e.target.value }));
+                  // 입력 시작하면 기존 에러 메시지는 지워줌
+                  if (error) setError('');
+                }}
                 disabled={loading}
                 data-testid="chat-room-name-input"
               />
             </Box>
-            <Field.Error match="valueMissing">채팅방 이름을 입력해주세요.</Field.Error>
+
+            {/* [UX 추가] 1글자 입력 시 즉시 경고 문구 표시 */}
+            {isNameTooShort && (
+               <Text typography="body3" color="var(--vapor-color-text-danger)">
+                 이름은 최소 2글자 이상이어야 합니다.
+               </Text>
+            )}
+
+            {/* 기존 에러 메시지 공간 (비어있을 때 공간 차지용으로 둘 수 있음) */}
+            {!isNameTooShort && <Field.Error match="valueMissing">채팅방 이름을 입력해주세요.</Field.Error>}
           </Field.Root>
 
           <Field.Root>
@@ -190,7 +229,12 @@ function NewChatRoom() {
           <Button
             type="submit"
             size="lg"
-            disabled={loading || !formData.name.trim() || (formData.hasPassword && !formData.password)}
+            // [UX 추가] 이름이 2글자 미만이면 버튼 클릭 불가 (서버 요청 방지)
+            disabled={
+                loading ||
+                !isNameValid ||
+                (formData.hasPassword && !formData.password)
+            }
             data-testid="create-chat-room-button"
           >
             {loading ? '생성 중...' : '채팅방 만들기'}
