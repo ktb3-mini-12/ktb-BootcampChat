@@ -41,7 +41,7 @@ public class SocketIOConfig {
         var socketConfig = new SocketConfig();
         socketConfig.setReuseAddress(true);
         socketConfig.setTcpNoDelay(false);
-        socketConfig.setAcceptBackLog(10);
+        socketConfig.setAcceptBackLog(500); // 대기열 크기 증가
         socketConfig.setTcpSendBufferSize(4096);
         socketConfig.setTcpReceiveBufferSize(4096);
         config.setSocketConfig(socketConfig);
@@ -55,6 +55,12 @@ public class SocketIOConfig {
 
         config.setJsonSupport(new JacksonJsonSupport(new JavaTimeModule()));
         config.setStoreFactory(new MemoryStoreFactory()); // 단일노드 전용
+
+        // Linux 환경일 경우 native epoll 사용
+        if (System.getProperty("os.name").toLowerCase().contains("linux")) {
+            config.setUseLinuxNativeEpoll(true);
+            log.info("Using Linux native epoll for Socket.IO");
+        }
 
         log.info("Socket.IO server configured on {}:{} with {} boss threads and {} worker threads",
                  host, port, config.getBossThreads(), config.getWorkerThreads());
