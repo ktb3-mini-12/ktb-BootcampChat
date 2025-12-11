@@ -1,13 +1,17 @@
 package com.ktb.chatapp.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.ktb.chatapp.util.EncryptionUtil;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.mongodb.core.index.IndexDirection;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.mapping.event.AbstractMongoEventListener;
@@ -33,11 +37,13 @@ public class User {
     
     private String encryptedEmail;
 
+    @JsonIgnore // 실수로 비밀번호가 JSON 응답에 노출되는 것을 방지
     private String password;
 
     private String profileImage;
 
     @CreatedDate
+    @Indexed(direction = IndexDirection.DESCENDING) // 최신 가입순 조회 성능 향상
     private LocalDateTime createdAt;
 
     @LastModifiedDate
@@ -53,12 +59,14 @@ public class User {
      * Email lowercase conversion before save
      */
     @Component
+    @Slf4j
     public static class UserEventListener extends AbstractMongoEventListener<User> {
         
-        private final org.springframework.context.ApplicationContext applicationContext;
+        private final EncryptionUtil encryptionUtil;
         
-        public UserEventListener(org.springframework.context.ApplicationContext applicationContext) {
-            this.applicationContext = applicationContext;
+        // ApplicationContext 직접 조회 대신 생성자 주입 사용 (@Lazy로 순환 참조 방지)
+        public UserEventListener(@Lazy EncryptionUtil encryptionUtil) {
+            this.encryptionUtil = encryptionUtil;
         }
         
         @Override
@@ -69,15 +77,13 @@ public class User {
                 
                 // 이메일 암호화
                 try {
-                    EncryptionUtil encryptionUtil =
-                        applicationContext.getBean(EncryptionUtil.class);
                     String encrypted = encryptionUtil.encrypt(user.getEmail());
                     if (encrypted != null) {
                         user.setEncryptedEmail(encrypted);
                     }
                 } catch (Exception e) {
-                    // 암호화 실패 시 로그만 남기고 계속 진행
-                    System.err.println("Email encryption failed: " + e.getMessage());
+                    // System.err 대신 Logger 사용
+                    log.error("Email encryption failed for user: {}", user.getEmail(), e);
                 }
             }
         }

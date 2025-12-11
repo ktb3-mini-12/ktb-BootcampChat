@@ -181,11 +181,8 @@ public class RoomService {
     private RoomResponse mapToRoomResponse(Room room) {
         if (room == null) return null;
 
-        List<User> participants = room.getParticipantIds().stream()
-                .map(userRepository::findById)
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .toList();
+        // N+1 문제 해결: 참여자 ID 목록으로 한 번에 조회 (Bulk Read)
+        List<User> participants = userRepository.findAllById(room.getParticipantIds());
 
         LocalDateTime tenMinutesAgo = LocalDateTime.now().minusMinutes(10);
         long recentMessageCount = messageRepository.countRecentMessagesByRoomId(room.getId(), tenMinutesAgo);

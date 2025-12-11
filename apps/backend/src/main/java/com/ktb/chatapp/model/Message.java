@@ -30,7 +30,6 @@ import java.util.Set;
 @AllArgsConstructor
 @Document(collection = "messages")
 @CompoundIndexes({
-    @CompoundIndex(name = "readers_userId_idx", def = "{'readers.userId': 1}"),
     @CompoundIndex(name = "room_isDeleted_timestamp_idx", def = "{'room': 1, 'isDeleted': 1, 'timestamp': -1}")
 })
 public class Message {
@@ -39,7 +38,7 @@ public class Message {
     private String id;
 
     // Mongo 문서 필드명 "room" 사용
-    @Indexed
+    // 복합 인덱스(room_isDeleted_timestamp_idx)의 첫 번째 필드이므로 단일 인덱스 불필요
     @Field("room")
     private String roomId;
 
@@ -53,6 +52,7 @@ public class Message {
     private MessageType type;
 
     // Mongo 문서 필드명 "file" 사용
+    @Indexed // 파일 다운로드 시 권한 검증(findByFileId) 성능을 위해 필수
     @Field("file")
     private String fileId;
 
@@ -75,7 +75,7 @@ public class Message {
     @Builder.Default
     private Map<String, Object> metadata = new HashMap<>();
 
-    @Indexed
+    // 복합 인덱스에 포함되어 있고, 단독 조회 케이스가 드물어 제거 (쓰기 성능 향상)
     @Builder.Default
     private Boolean isDeleted = false;
 

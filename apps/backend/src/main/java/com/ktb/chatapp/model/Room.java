@@ -30,7 +30,7 @@ public class Room {
     @Id
     private String id;
 
-    @Indexed
+    // 복합 인덱스(name_createdAt_idx)의 첫 번째 필드이므로 단일 인덱스 불필요
     private String name;
 
     private String creator;
