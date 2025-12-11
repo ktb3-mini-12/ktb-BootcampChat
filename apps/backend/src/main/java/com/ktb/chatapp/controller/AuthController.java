@@ -4,6 +4,7 @@ import com.ktb.chatapp.dto.*;
 import com.ktb.chatapp.event.SessionEndedEvent;
 import com.ktb.chatapp.model.User;
 import com.ktb.chatapp.repository.UserRepository;
+import com.ktb.chatapp.service.CustomUserDetails;
 import com.ktb.chatapp.service.JwtService;
 import com.ktb.chatapp.service.SessionCreationResult;
 import com.ktb.chatapp.service.SessionMetadata;
@@ -74,7 +75,7 @@ public class AuthController {
             content = @Content(schema = @Schema(implementation = LoginResponse.class))),
         @ApiResponse(responseCode = "400", description = "유효하지 않은 입력값",
             content = @Content(schema = @Schema(implementation = StandardResponse.class),
-                examples = @ExampleObject(value = "{\"success\":false,\"code\":\"VALIDATION_ERROR\",\"errors\":[{\"field\":\"email\",\"message\":\"올바른 이메일 형식이 아닙니다.\"}]}"))),
+                examples = @ExampleObject(value = "{\"success\":false,\"code\":\"VALIDATION_ERROR\",\"errors\":[{\"field\":\"email\",\"message\":\"올바른 이메일 형식이 아닙니다.\"}]}\n"))),
         @ApiResponse(responseCode = "409", description = "이미 등록된 이메일",
             content = @Content(schema = @Schema(implementation = StandardResponse.class),
                 examples = @ExampleObject(value = "{\"success\":false,\"message\":\"이미 등록된 이메일입니다.\"}"))),
@@ -158,17 +159,16 @@ public class AuthController {
         if (errors != null) return errors;
         
         try {
-            // Authenticate user
-            User user = userRepository.findByEmail(loginRequest.email().toLowerCase())
-                    .orElseThrow(() -> new UsernameNotFoundException("User not found"));
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
-                            user.getEmail(),
+                            loginRequest.email().toLowerCase(),
                             loginRequest.password()
                     )
             );
 
             SecurityContextHolder.getContext().setAuthentication(authentication);
+            CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+            User user = userDetails.getUser();
 
             // Create new session
             SessionMetadata metadata = new SessionMetadata(
@@ -297,22 +297,16 @@ public class AuthController {
 
             // 토큰에서 사용자 정보 추출
             String userId = jwtService.extractUserId(token);
-            
-            Optional<User> userOpt = userRepository.findById(userId);
+			
+			var validationResult = sessionService.validateSession(userId, sessionId);
 
-            if (userOpt.isEmpty()) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                        .body(new TokenVerifyResponse(false, "사용자를 찾을 수 없습니다.", null));
-            }
-
-            User user = userOpt.get();
             // 세션 유효성 검증
-            if (!sessionService.validateSession(user.getId(), sessionId).isValid()) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                        .body(new TokenVerifyResponse(false, "만료된 세션입니다.", null));
-            }
+			if(!validationResult.isValid()) {
+				return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+						.body(new TokenVerifyResponse(false, "만료된 세션입니다.", null));
+			}
 
-            AuthUserDto authUserDto = new AuthUserDto(user.getId(), user.getName(), user.getEmail(), user.getProfileImage());
+            AuthUserDto authUserDto = new AuthUserDto(userId, "", "", null);
             return ResponseEntity.ok(new TokenVerifyResponse(true, "토큰이 유효합니다.", authUserDto));
 
         } catch (Exception e) {
