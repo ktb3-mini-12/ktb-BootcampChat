@@ -211,6 +211,14 @@ public class ChatMessageHandler {
         message.setTimestamp(LocalDateTime.now());
         message.setMentions(messageContent.aiMentions());
 
+		// 메타데이터는 Map<String, Object>
+		Map<String, Object> metadata = new HashMap<>();
+		metadata.put("fileType", file.getMimetype());
+		metadata.put("fileSize", file.getSize());
+		metadata.put("originalName", file.getOriginalname());
+		metadata.put("fileName", file.getFilename());
+		message.setMetadata(metadata);
+
         return message;
     }
 
@@ -232,12 +240,7 @@ public class ChatMessageHandler {
     }
 
     private MessageResponse createMessageResponse(Message message, User sender) {
-        FileResponse fileResponse = null;
-        if (message.getFileId() != null) {
-            fileResponse = fileRepository.findById(message.getFileId())
-                    .map(FileResponse::from)
-                    .orElse(null);
-        }
+        FileResponse fileResponse = buildFileResponse(message);
 
         return new MessageResponse(
                 message.getId(),
@@ -275,5 +278,32 @@ public class ChatMessageHandler {
                 .tag("error_type", errorType)
                 .register(meterRegistry)
                 .increment();
+    }
+
+    private FileResponse buildFileResponse(Message message) {
+        if (message.getFileId() == null) {
+            return null;
+        }
+
+        Map<String, Object> metadata = message.getMetadata();
+        if (metadata != null) {
+            Object sizeObj = metadata.get("fileSize");
+            Long size = null;
+            if (sizeObj instanceof Number number) {
+                size = number.longValue();
+            }
+
+            String filename = metadata.get("fileName") instanceof String fn ? fn : null;
+            String originalName = metadata.get("originalName") instanceof String on ? on : null;
+            String fileType = metadata.get("fileType") instanceof String ft ? ft : null;
+
+            if (filename != null && originalName != null && fileType != null && size != null) {
+                return new FileResponse(filename, originalName, fileType, size);
+            }
+        }
+
+        return fileRepository.findById(message.getFileId())
+                .map(FileResponse::from)
+                .orElse(null);
     }
 }
