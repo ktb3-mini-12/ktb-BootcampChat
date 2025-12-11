@@ -1,30 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/router';
-import { ErrorCircleIcon } from '@vapor-ui/icons';
-import {
-  Box,
-  Button,
-  Field,
-  Form,
-  HStack,
-  Switch,
-  Text,
-  TextInput,
-  VStack,
-  Callout
-} from '@vapor-ui/core';
-import { useAuth } from '@/contexts/AuthContext';
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/router";
+import { ErrorCircleIcon } from "@vapor-ui/icons";
+import { Box, Button, Field, Form, HStack, Switch, Text, TextInput, VStack, Callout } from "@vapor-ui/core";
+import { useAuth } from "@/contexts/AuthContext";
 
 function NewChatRoom() {
   const router = useRouter();
   const { user: currentUser } = useAuth();
   const [formData, setFormData] = useState({
-    name: '',
+    name: "",
     hasPassword: false,
-    password: ''
+    password: "",
   });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   // 유효성 검사
   const nameLength = formData.name.trim().length;
@@ -38,49 +27,49 @@ function NewChatRoom() {
     e.preventDefault();
 
     if (!isNameValid) {
-      setError('채팅방 이름은 2글자 이상이어야 합니다.');
+      setError("채팅방 이름은 2글자 이상이어야 합니다.");
       return;
     }
 
     if (formData.hasPassword && !formData.password) {
-      setError('비밀번호를 입력해주세요.');
+      setError("비밀번호를 입력해주세요.");
       return;
     }
 
     if (!currentUser?.token) {
-      setError('인증 정보가 없습니다. 다시 로그인해주세요.');
+      setError("인증 정보가 없습니다. 다시 로그인해주세요.");
       return;
     }
 
     try {
       setLoading(true);
-      setError('');
+      setError("");
 
       // 1. 방 생성 요청
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/rooms`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'x-auth-token': currentUser.token,
-          'x-session-id': currentUser.sessionId
+          "Content-Type": "application/json",
+          "x-auth-token": currentUser.token,
+          "x-session-id": currentUser.sessionId,
         },
         body: JSON.stringify({
           name: formData.name.trim(),
-          password: formData.hasPassword ? formData.password : undefined
-        })
+          password: formData.hasPassword ? formData.password : undefined,
+        }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
 
-        let errorMessage = '채팅방 생성에 실패했습니다.';
+        let errorMessage = "채팅방 생성에 실패했습니다.";
         if (errorData.errors && Array.isArray(errorData.errors) && errorData.errors.length > 0) {
           errorMessage = errorData.errors[0].message;
         } else if (errorData.message) {
           errorMessage = errorData.message;
         }
         if (response.status === 401) {
-          errorMessage = '인증이 만료되었습니다. 다시 로그인해주세요.';
+          errorMessage = "인증이 만료되었습니다. 다시 로그인해주세요.";
         }
         throw new Error(errorMessage);
       }
@@ -91,9 +80,8 @@ function NewChatRoom() {
       // await joinRoom(...) <--- 이 불필요한 요청을 삭제했습니다.
       // 방금 만든 방의 ID(data._id)를 가지고 바로 채팅방으로 이동합니다.
       router.push(`/chat/${data._id}`);
-
     } catch (error) {
-      console.error('Room creation error:', error);
+      console.error("Room creation error:", error);
       setError(error.message);
     } finally {
       // 페이지 이동 중에는 로딩 상태를 풀지 않아도 됩니다 (UX상 더 자연스러움)
@@ -105,13 +93,7 @@ function NewChatRoom() {
   };
 
   return (
-    <Box
-      display="flex"
-      justifyContent="center"
-      alignItems="center"
-      minHeight="100vh"
-      padding="$300"
-    >
+    <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" padding="$300">
       <VStack
         gap="$400"
         width="400px"
@@ -146,8 +128,8 @@ function NewChatRoom() {
                 value={formData.name}
                 invalid={isNameTooShort}
                 onChange={(e) => {
-                  setFormData(prev => ({ ...prev, name: e.target.value }));
-                  if (error) setError('');
+                  setFormData((prev) => ({ ...prev, name: e.target.value }));
+                  if (error) setError("");
                 }}
                 disabled={loading}
                 data-testid="chat-room-name-input"
@@ -155,9 +137,9 @@ function NewChatRoom() {
             </Box>
 
             {isNameTooShort && (
-               <Text typography="body3" color="var(--vapor-color-text-danger)">
-                 이름은 최소 2글자 이상이어야 합니다.
-               </Text>
+              <Text typography="body3" color="var(--vapor-color-text-danger)">
+                이름은 최소 2글자 이상이어야 합니다.
+              </Text>
             )}
           </Field.Root>
 
@@ -167,11 +149,13 @@ function NewChatRoom() {
               <Switch.Root
                 id="room-password-toggle"
                 checked={formData.hasPassword}
-                onCheckedChange={(checked) => setFormData(prev => ({
-                  ...prev,
-                  hasPassword: checked,
-                  password: checked ? prev.password : ''
-                }))}
+                onCheckedChange={(checked) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    hasPassword: checked,
+                    password: checked ? prev.password : "",
+                  }))
+                }
                 disabled={loading}
               />
             </HStack>
@@ -189,7 +173,7 @@ function NewChatRoom() {
                   size="lg"
                   placeholder="비밀번호를 입력하세요"
                   value={formData.password}
-                  onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
                   disabled={loading}
                 />
               </Box>
@@ -199,14 +183,10 @@ function NewChatRoom() {
           <Button
             type="submit"
             size="lg"
-            disabled={
-                loading ||
-                !isNameValid ||
-                (formData.hasPassword && !formData.password)
-            }
+            disabled={loading || !isNameValid || (formData.hasPassword && !formData.password)}
             data-testid="create-chat-room-button"
           >
-            {loading ? '생성 중...' : '채팅방 만들기'}
+            {loading ? "생성 중..." : "채팅방 만들기"}
           </Button>
         </VStack>
       </VStack>
