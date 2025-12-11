@@ -4,10 +4,6 @@ import com.ktb.chatapp.validation.ValidEmail;
 import com.ktb.chatapp.validation.ValidName;
 import com.ktb.chatapp.validation.ValidPassword;
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 
 @Schema(description = "회원가입 요청")
 public record RegisterRequest (
