@@ -58,9 +58,9 @@ const ChatMessages = ({
   );
   const isMine = useCallback((msg) => {
     if (!msg?.sender || !currentUser?.id) return false;
-    
+
     return (
-      msg.sender._id === currentUser.id || 
+      msg.sender._id === currentUser.id ||
       msg.sender.id === currentUser.id ||
       msg.sender === currentUser.id
     );

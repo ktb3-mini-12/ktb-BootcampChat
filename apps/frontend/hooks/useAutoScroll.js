@@ -1,22 +1,16 @@
 import { useRef, useEffect, useCallback } from 'react';
 
 /**
- * 채팅 메시지 자동 스크롤 훅
- * 
- * 특징:
- * - 내가 쓴 메시지: 무조건 최하단 스크롤
- * - 남이 쓴 메시지: 사용자가 하단 근처에 있을 때만 자동 스크롤
- * - 이전 메시지 로딩 시: 스크롤 위치 복원
- * 
- * @param {Array} messages - 메시지 배열
+ * 채팅 메시지 자동 스크롤 훅 (최적화 버전)
+ * * @param {Array} messages - 메시지 배열
  * @param {string} currentUserId - 현재 사용자 ID
  * @param {boolean} isLoadingMessages - 이전 메시지 로딩 중 여부
  * @param {number} threshold - 자동 스크롤 임계값 (px, 기본 100)
  * @returns {Object} { containerRef, scrollToBottom, isNearBottom }
  */
 export const useAutoScroll = (
-  messages = [], 
-  currentUserId = null, 
+  messages = [],
+  currentUserId = null,
   isLoadingMessages = false,
   threshold = 100
 ) => {
@@ -24,8 +18,7 @@ export const useAutoScroll = (
   const isNearBottomRef = useRef(true);
   const previousMessagesLengthRef = useRef(0);
   const isAutoScrollingRef = useRef(false);
-  
-  // 스크롤 복원을 위한 ref
+
   const previousScrollHeightRef = useRef(0);
   const previousScrollTopRef = useRef(0);
   const isRestoringRef = useRef(false);
@@ -45,8 +38,10 @@ export const useAutoScroll = (
 
   /**
    * 최하단으로 스크롤
+   * [수정] 기본 behavior를 'auto' (즉시)로 변경하여 E2E 테스트 속도 향상
+   * [수정] setTimeout 지연 시간을 줄여서 타이밍 오류 위험 감소
    */
-  const scrollToBottom = useCallback((behavior = 'smooth') => {
+  const scrollToBottom = useCallback((behavior = 'auto') => {
     const container = containerRef.current;
     if (!container) return;
 
@@ -57,11 +52,13 @@ export const useAutoScroll = (
       behavior
     });
 
-    // 스크롤 완료 후 플래그 리셋
+    // behavior가 'smooth'일 때만 약간 기다려주고, 'auto'일 때는 50ms 후 플래그 해제
+    const delay = behavior === 'smooth' ? 100 : 50;
+
     setTimeout(() => {
       isAutoScrollingRef.current = false;
       isNearBottomRef.current = true;
-    }, 300);
+    }, delay);
   }, []);
 
   /**
@@ -120,56 +117,46 @@ export const useAutoScroll = (
    * 메시지 추가 시 자동 스크롤 로직
    */
   useEffect(() => {
-    // 스크롤 복원 중이면 자동 스크롤 안함
     if (isRestoringRef.current || isLoadingMessages) {
       return;
     }
 
-    // 메시지가 추가되지 않았으면 무시
     if (messages.length === 0 || messages.length === previousMessagesLengthRef.current) {
       return;
     }
 
-    // 이전보다 메시지가 줄었으면 (초기화 등) 무시
     if (messages.length < previousMessagesLengthRef.current) {
       previousMessagesLengthRef.current = messages.length;
       return;
     }
 
-    // 새로 추가된 메시지들 확인
     const newMessages = messages.slice(previousMessagesLengthRef.current);
     previousMessagesLengthRef.current = messages.length;
 
-    // 새 메시지가 없으면 무시
     if (newMessages.length === 0) return;
 
-    // 가장 최근 메시지 확인
     const latestMessage = newMessages[newMessages.length - 1];
     if (!latestMessage) return;
 
-    // 메시지 발신자 확인
     const senderId = latestMessage.sender?._id || latestMessage.sender?.id || latestMessage.sender;
     const isMyMessage = senderId === currentUserId;
 
-    // 자동 스크롤 조건 확인
+    // [수정] behavior를 'auto'로 호출
     if (isMyMessage) {
-      // 내가 쓴 메시지 → 무조건 스크롤
-      scrollToBottom('smooth');
+      scrollToBottom('auto');
     } else if (isNearBottomRef.current) {
-      // 남이 쓴 메시지 + 하단 근처에 있음 → 자동 스크롤
-      scrollToBottom('smooth');
-    } else {
-      // 남이 쓴 메시지 + 상단에 있음 → 스크롤 안함
+      scrollToBottom('auto');
     }
   }, [messages, currentUserId, scrollToBottom, isLoadingMessages]);
 
   /**
    * 초기 로드 시 최하단으로 스크롤
+   * [수정] 불필요한 100ms setTimeout 제거
    */
   useEffect(() => {
     if (messages.length > 0 && previousMessagesLengthRef.current === 0) {
       // 초기 로드는 즉시 스크롤 (애니메이션 없이)
-      setTimeout(() => scrollToBottom('auto'), 100);
+      scrollToBottom('auto');
     }
   }, [messages.length, scrollToBottom]);
 

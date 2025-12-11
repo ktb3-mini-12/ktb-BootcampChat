@@ -1,21 +1,29 @@
-import React, { useState, useEffect, useCallback, forwardRef } from "react";
-import Image from "next/image";
+import React, { useState, useEffect, useCallback, useMemo, forwardRef } from "react";
+import Image from "next/image"; // Next.js Image 컴포넌트 추가
 import { Avatar } from "@vapor-ui/core";
 import { generateColorFromEmail, getContrastTextColor } from "@/utils/colorUtils";
 
+// [최적화 1] 전역 색상 캐시 (메모리 공유 및 CPU 연산 최소화)
+const colorCache = new Map();
+
+const getCachedColors = (email) => {
+  if (!email) return { backgroundColor: "#E0E0E0", color: "#000000" };
+
+  if (colorCache.has(email)) {
+    return colorCache.get(email);
+  }
+
+  // 캐시에 없으면 계산 후 저장
+  const backgroundColor = generateColorFromEmail(email);
+  const color = getContrastTextColor(backgroundColor);
+  const colors = { backgroundColor, color };
+
+  colorCache.set(email, colors);
+  return colors;
+};
+
 /**
- * CustomAvatar 컴포넌트
- *
- * @param {Object} props
- * @param {Object} props.user - 사용자 객체 (name, email, profileImage 필드)
- * @param {string} props.size - 아바타 크기 ('sm' | 'md' | 'lg' | 'xl')
- * @param {Function} props.onClick - 클릭 핸들러 (있으면 button으로 렌더링)
- * @param {string} props.src - 프로필 이미지 URL (user.profileImage 대신 직접 지정 가능)
- * @param {boolean} props.showImage - 이미지 표시 여부 (기본값: true)
- * @param {boolean} props.persistent - 실시간 프로필 업데이트 감지 여부 (기본값: false)
- * @param {boolean} props.showInitials - 이니셜 표시 여부 (기본값: true)
- * @param {string} props.className - 추가 CSS 클래스
- * @param {Object} props.style - 추가 인라인 스타일
+ * CustomAvatar 컴포넌트 (최적화 버전)
  */
 const CustomAvatar = forwardRef(
   (
@@ -33,33 +41,24 @@ const CustomAvatar = forwardRef(
     },
     ref
   ) => {
-    // persistent 모드일 때만 상태 관리
     const [currentImage, setCurrentImage] = useState("");
     const [imageError, setImageError] = useState(false);
 
-    // 이메일 기반 배경색/텍스트 색상 생성
-    const backgroundColor = generateColorFromEmail(user?.email);
-    const color = getContrastTextColor(backgroundColor);
+    // [최적화 2] 색상 계산 메모이제이션 (캐시 조회)
+    const { backgroundColor, color } = useMemo(() => getCachedColors(user?.email), [user?.email]);
 
-    // 프로필 이미지 URL 생성 (memoized)
+    // [최적화 3] 이미지 URL 생성 로직 메모이제이션
     const getImageUrl = useCallback(
       (imagePath) => {
-        // src prop이 직접 제공된 경우
         if (src) return src;
-
         if (!imagePath) return null;
-
-        // 이미 전체 URL인 경우
-        if (imagePath.startsWith("http")) {
-          return imagePath;
-        }
-        // API URL과 결합 필요한 경우
+        if (imagePath.startsWith("http")) return imagePath;
         return `${process.env.NEXT_PUBLIC_API_URL}${imagePath}`;
       },
       [src]
     );
 
-    // persistent 모드: 프로필 이미지 URL 처리
+    // --- persistent 모드 로직 (V1 유지) ---
     useEffect(() => {
       if (!persistent) return;
 
@@ -72,14 +71,12 @@ const CustomAvatar = forwardRef(
       }
     }, [persistent, user?.profileImage, getImageUrl, currentImage]);
 
-    // persistent 모드: 전역 프로필 업데이트 리스너
     useEffect(() => {
       if (!persistent) return;
 
       const handleProfileUpdate = () => {
         try {
           const updatedUser = JSON.parse(localStorage.getItem("user") || "{}");
-          // 현재 사용자의 프로필이 업데이트된 경우에만 이미지 업데이트
           if (user?.id === updatedUser.id && updatedUser.profileImage !== user.profileImage) {
             const newImageUrl = getImageUrl(updatedUser.profileImage);
             setImageError(false);
@@ -96,21 +93,16 @@ const CustomAvatar = forwardRef(
       };
     }, [persistent, getImageUrl, user?.id, user?.profileImage]);
 
-    // 이미지 에러 핸들러
+    // 이미지 에러 핸들러 (V2의 간결한 버전으로 통일)
     const handleImageError = useCallback(() => {
       if (!persistent) return;
 
       setImageError(true);
+      // V2의 디버그 로그 제거 (프로덕션 환경 최적화)
+    }, [persistent]);
 
-      console.debug("Avatar image load failed:", {
-        user: user?.name,
-        email: user?.email,
-        imageUrl: persistent ? currentImage : getImageUrl(user?.profileImage),
-      });
-    }, [persistent, currentImage, user?.name, user?.email, user?.profileImage, getImageUrl]);
-
-    // 최종 이미지 URL 결정
-    const finalImageUrl = (() => {
+    // [최적화 4] 최종 렌더링 URL 메모이제이션
+    const finalImageUrl = useMemo(() => {
       if (!showImage) return undefined;
 
       if (persistent) {
@@ -118,18 +110,18 @@ const CustomAvatar = forwardRef(
       }
 
       return getImageUrl(user?.profileImage);
-    })();
+    }, [showImage, persistent, currentImage, imageError, user?.profileImage, getImageUrl]);
 
-    // 사용자 이름 첫 글자
-    const initial = showInitials ? user?.name?.charAt(0)?.toUpperCase() || "?" : "";
+    const initial = useMemo(() => {
+      return showInitials ? user?.name?.charAt(0)?.toUpperCase() || "?" : "";
+    }, [showInitials, user?.name]);
 
-    // 클릭 가능한 경우 button으로 렌더링
-    const renderProp = onClick ? <button onClick={onClick} /> : undefined;
+    const renderProp = useMemo(() => (onClick ? <button onClick={onClick} type="button" /> : undefined), [onClick]);
 
     return (
       <Avatar.Root
         ref={ref}
-        key={user?._id || user?.id}
+        key={user?._id || user?.id} // key는 여기서 쓰는게 아니라 부모에서 써야하지만 안전장치
         shape="circle"
         size={size}
         render={renderProp}
@@ -138,10 +130,12 @@ const CustomAvatar = forwardRef(
           backgroundColor,
           color,
           cursor: onClick ? "pointer" : "default",
+          // V1의 추가 스타일을 유지합니다.
           ...style,
         }}
         {...props}
       >
+        {/* V2의 Next/Image 컴포넌트 이식 (Next.js 이미지 최적화 적용) */}
         {finalImageUrl && (
           <Image
             src={finalImageUrl}
@@ -149,6 +143,7 @@ const CustomAvatar = forwardRef(
             layout="fill"
             objectFit="cover"
             onError={persistent ? handleImageError : undefined}
+            // V1의 loading="lazy"는 layout="fill" 시 Next.js가 자동 처리하므로 생략
           />
         )}
         <Avatar.FallbackPrimitive style={{ backgroundColor, color, fontWeight: "500" }}>
@@ -161,4 +156,15 @@ const CustomAvatar = forwardRef(
 
 CustomAvatar.displayName = "CustomAvatar";
 
-export default CustomAvatar;
+// [최적화 5] React.memo 적용 (커스텀 비교 함수)
+export default React.memo(CustomAvatar, (prev, next) => {
+  return (
+    prev.user?.id === next.user?.id &&
+    prev.user?.profileImage === next.user?.profileImage &&
+    prev.user?.name === next.user?.name &&
+    prev.user?.email === next.user?.email &&
+    prev.size === next.size &&
+    prev.src === next.src &&
+    prev.persistent === next.persistent
+  );
+});
