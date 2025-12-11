@@ -6,7 +6,7 @@ COMPOSE_O11Y_FILE ?= docker-compose.o11y.yaml
 BACKEND_SCALE ?= 3
 DEPLOY_SERVERS ?= your-remote-server1 your-remote-server2 your-remote-server3
 DEPLOY_PATH ?= /home/ubuntu/ktb-chat-backend
-JVM_OPTS ?= -Xms512m -Xmx768m
+JVM_OPTS ?= -Xms1024m
 
 # SDKMAN 초기화 매크로
 SDKMAN_INIT = source "$$HOME/.sdkman/bin/sdkman-init.sh" 2>/dev/null || true

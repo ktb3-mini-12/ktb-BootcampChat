@@ -26,7 +26,7 @@ public class Session {
     @Id
     private String id;
 
-    @Indexed
+    // 복합 인덱스(userId_sessionId_idx)의 첫 번째 필드이므로 단일 인덱스 불필요
     private String userId;
 
     private String sessionId;
