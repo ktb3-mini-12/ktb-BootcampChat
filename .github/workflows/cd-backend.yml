@@ -8,12 +8,11 @@ on:
       - '.github/workflows/cd-backend.yml'
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/backend
-
     steps:
       - uses: actions/checkout@v4
 
@@ -23,18 +22,69 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
-      - run: ./mvnw clean package -DskipTests
+      - name: Build JAR
+        run: ./mvnw clean package -DskipTests
 
-      - name: Deploy to EC2
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-jar
+          path: apps/backend/target/ktb-chat-backend-0.0.1-SNAPSHOT.jar
+
+      - name: Upload control script
+        uses: actions/upload-artifact@v4
+        with:
+          name: control-script
+          path: apps/backend/app-control.sh
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - host: BE_HOST_1
+            name: api-1
+          - host: BE_HOST_2
+            name: api-2
+          - host: BE_HOST_3
+            name: api-3
+          - host: BE_HOST_4
+            name: api-4
+          - host: BE_HOST_5
+            name: api-5
+          - host: BE_HOST_6
+            name: api-6
+      fail-fast: false
+    steps:
+      - name: Download JAR artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-jar
+
+      - name: Download control script
+        uses: actions/download-artifact@v4
+        with:
+          name: control-script
+
+      - name: Deploy to ${{ matrix.name }}
         env:
           SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
-          HOST: ${{ secrets.BE_HOST }}
+          HOST: ${{ secrets[matrix.host] }}
         run: |
+          if [ -z "$HOST" ]; then
+            echo "::warning::${{ matrix.host }} not configured, skipping"
+            exit 0
+          fi
+
           echo "$SSH_KEY" > key.pem
           chmod 600 key.pem
+          trap "rm -f key.pem" EXIT
+
+          ssh -i key.pem -o StrictHostKeyChecking=no ubuntu@$HOST "mkdir -p /home/ubuntu/ktb-chat-backend/target /home/ubuntu/ktb-chat-backend/logs"
 
           scp -i key.pem -o StrictHostKeyChecking=no \
-            target/ktb-chat-backend-0.0.1-SNAPSHOT.jar \
+            ktb-chat-backend-0.0.1-SNAPSHOT.jar \
             ubuntu@$HOST:/home/ubuntu/ktb-chat-backend/target/
 
           scp -i key.pem -o StrictHostKeyChecking=no \
@@ -46,5 +96,3 @@ jobs:
             chmod +x app-control.sh
             ./app-control.sh restart
           EOF
-
-          rm key.pem
