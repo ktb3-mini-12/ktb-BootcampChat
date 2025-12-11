@@ -78,7 +78,8 @@ public class FileController {
                 fileData.put("mimetype", result.getFile().getMimetype());
                 fileData.put("size", result.getFile().getSize());
                 fileData.put("uploadDate", result.getFile().getUploadDate());
-                
+                fileData.put("url", result.getFile().getUrl());  // S3 Public URL
+
                 response.put("file", fileData);
 
                 return ResponseEntity.ok(response);
