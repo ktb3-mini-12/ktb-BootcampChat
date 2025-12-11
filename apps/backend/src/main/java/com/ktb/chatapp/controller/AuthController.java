@@ -4,6 +4,7 @@ import com.ktb.chatapp.dto.*;
 import com.ktb.chatapp.event.SessionEndedEvent;
 import com.ktb.chatapp.model.User;
 import com.ktb.chatapp.repository.UserRepository;
+import com.ktb.chatapp.service.CustomUserDetails;
 import com.ktb.chatapp.service.JwtService;
 import com.ktb.chatapp.service.SessionCreationResult;
 import com.ktb.chatapp.service.SessionMetadata;
@@ -74,7 +75,7 @@ public class AuthController {
             content = @Content(schema = @Schema(implementation = LoginResponse.class))),
         @ApiResponse(responseCode = "400", description = "유효하지 않은 입력값",
             content = @Content(schema = @Schema(implementation = StandardResponse.class),
-                examples = @ExampleObject(value = "{\"success\":false,\"code\":\"VALIDATION_ERROR\",\"errors\":[{\"field\":\"email\",\"message\":\"올바른 이메일 형식이 아닙니다.\"}]}"))),
+                examples = @ExampleObject(value = "{\"success\":false,\"code\":\"VALIDATION_ERROR\",\"errors\":[{\"field\":\"email\",\"message\":\"올바른 이메일 형식이 아닙니다.\"}]}\n"))),
         @ApiResponse(responseCode = "409", description = "이미 등록된 이메일",
             content = @Content(schema = @Schema(implementation = StandardResponse.class),
                 examples = @ExampleObject(value = "{\"success\":false,\"message\":\"이미 등록된 이메일입니다.\"}"))),
@@ -158,17 +159,16 @@ public class AuthController {
         if (errors != null) return errors;
         
         try {
-            // Authenticate user
-            User user = userRepository.findByEmail(loginRequest.email().toLowerCase())
-                    .orElseThrow(() -> new UsernameNotFoundException("User not found"));
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
-                            user.getEmail(),
+                            loginRequest.email().toLowerCase(),
                             loginRequest.password()
                     )
             );
 
             SecurityContextHolder.getContext().setAuthentication(authentication);
+            CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+            User user = userDetails.getUser();
 
             // Create new session
             SessionMetadata metadata = new SessionMetadata(
