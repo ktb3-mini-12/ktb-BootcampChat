@@ -8,6 +8,8 @@ import com.ktb.chatapp.dto.MessageReactionResponse;
 import com.ktb.chatapp.model.Message;
 import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
+import com.ktb.chatapp.pubsub.RedisBroadcastMessage;
+import com.ktb.chatapp.pubsub.RedisPubSubService;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,9 +27,10 @@ import static com.ktb.chatapp.websocket.socketio.SocketIOEvents.*;
 @ConditionalOnProperty(name = "socketio.enabled", havingValue = "true", matchIfMissing = true)
 @RequiredArgsConstructor
 public class MessageReactionHandler {
-    
+
     private final SocketIOServer socketIOServer;
     private final MessageRepository messageRepository;
+    private final RedisPubSubService redisPubSubService;
     
     @OnEvent(MESSAGE_REACTION)
     public void handleMessageReaction(SocketIOClient client, MessageReactionRequest data) {
@@ -66,6 +69,13 @@ public class MessageReactionHandler {
             socketIOServer.getRoomOperations(message.getRoomId())
                 .sendEvent(MESSAGE_REACTION_UPDATE, response);
 
+            // Redis Pub/Sub으로 다른 서버에 리액션 업데이트 브로드캐스트
+            redisPubSubService.publish(
+                    RedisBroadcastMessage.EVENT_MESSAGE_REACTION_UPDATE,
+                    message.getRoomId(),
+                    response
+            );
+
         } catch (Exception e) {
             log.error("Error handling messageReaction", e);
             client.sendEvent(ERROR, Map.of(
@@ -76,6 +86,6 @@ public class MessageReactionHandler {
     
     private String getUserId(SocketIOClient client) {
         var user = (SocketUser) client.get("user");
-        return user.id();
+        return user != null ? user.id() : null;
     }
 }

@@ -2,6 +2,8 @@ package com.ktb.chatapp.websocket.socketio;
 
 import com.corundumstudio.socketio.SocketIOServer;
 import com.ktb.chatapp.event.*;
+import com.ktb.chatapp.pubsub.RedisBroadcastMessage;
+import com.ktb.chatapp.pubsub.RedisPubSubService;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +20,7 @@ import static com.ktb.chatapp.websocket.socketio.SocketIOEvents.*;
 public class SocketIOEventListener {
 
     private final SocketIOServer socketIOServer;
+    private final RedisPubSubService redisPubSubService;
 
     @EventListener
     public void handleSessionEndedEvent(SessionEndedEvent event) {
@@ -37,6 +40,14 @@ public class SocketIOEventListener {
     public void handleRoomCreatedEvent(RoomCreatedEvent event) {
         try {
             socketIOServer.getRoomOperations("room-list").sendEvent(ROOM_CREATED, event.getRoomResponse());
+
+            // Redis Pub/Sub으로 다른 서버에 브로드캐스트
+            redisPubSubService.publish(
+                    RedisBroadcastMessage.EVENT_ROOM_CREATED,
+                    "room-list",
+                    event.getRoomResponse()
+            );
+
             log.info("roomCreated 이벤트 발송: roomId={}", event.getRoomResponse().id());
         } catch (Exception e) {
             log.error("roomCreated 이벤트 발송 실패", e);
@@ -47,6 +58,14 @@ public class SocketIOEventListener {
     public void handleRoomUpdatedEvent(RoomUpdatedEvent event) {
         try {
             socketIOServer.getRoomOperations(event.getRoomId()).sendEvent(ROOM_UPDATE, event.getRoomResponse());
+
+            // Redis Pub/Sub으로 다른 서버에 브로드캐스트
+            redisPubSubService.publish(
+                    RedisBroadcastMessage.EVENT_ROOM_UPDATE,
+                    event.getRoomId(),
+                    event.getRoomResponse()
+            );
+
             log.info("roomUpdate 이벤트 발송: roomId={}", event.getRoomId());
         } catch (Exception e) {
             log.error("roomUpdate 이벤트 발송 실패: roomId={}", event.getRoomId(), e);
@@ -63,6 +82,14 @@ public class SocketIOEventListener {
             );
             socketIOServer.getRoomOperations(event.getRoomId())
                     .sendEvent(AI_MESSAGE_START, data);
+
+            // Redis Pub/Sub으로 다른 서버에 브로드캐스트
+            redisPubSubService.publish(
+                    RedisBroadcastMessage.EVENT_AI_START,
+                    event.getRoomId(),
+                    data
+            );
+
             log.info("aiMessageStart 이벤트 발송: roomId={}, messageId={}",
                     event.getRoomId(), event.getMessageId());
         } catch (Exception e) {
@@ -81,6 +108,13 @@ public class SocketIOEventListener {
             );
             socketIOServer.getRoomOperations(event.getRoomId())
                     .sendEvent(AI_MESSAGE_CHUNK, data);
+
+            // Redis Pub/Sub으로 다른 서버에 브로드캐스트
+            redisPubSubService.publish(
+                    RedisBroadcastMessage.EVENT_AI_CHUNK,
+                    event.getRoomId(),
+                    data
+            );
         } catch (Exception e) {
             log.error("aiMessageChunk 이벤트 발송 실패: roomId={}", event.getRoomId(), e);
         }
@@ -88,7 +122,6 @@ public class SocketIOEventListener {
 
     @EventListener
     public void handleAiMessageCompleteEvent(AiMessageSavedEvent event) {
-        
         try {
             Map<String, Object> data = Map.of(
                 "_id", event.getSavedMessageId(),
@@ -98,6 +131,14 @@ public class SocketIOEventListener {
             );
             socketIOServer.getRoomOperations(event.getRoomId())
                     .sendEvent(AI_MESSAGE_COMPLETE, data);
+
+            // Redis Pub/Sub으로 다른 서버에 브로드캐스트
+            redisPubSubService.publish(
+                    RedisBroadcastMessage.EVENT_AI_COMPLETE,
+                    event.getRoomId(),
+                    data
+            );
+
             log.info("aiMessageComplete 이벤트 발송: roomId={}, messageId={}",
                     event.getRoomId(), event.getSavedMessageId());
         } catch (Exception e) {
@@ -115,6 +156,14 @@ public class SocketIOEventListener {
             );
             socketIOServer.getRoomOperations(event.getRoomId())
                     .sendEvent(AI_MESSAGE_ERROR, data);
+
+            // Redis Pub/Sub으로 다른 서버에 브로드캐스트
+            redisPubSubService.publish(
+                    RedisBroadcastMessage.EVENT_AI_ERROR,
+                    event.getRoomId(),
+                    data
+            );
+
             log.error("aiMessageError 이벤트 발송: roomId={}, messageId={}, error={}",
                     event.getRoomId(), event.getMessageId(), event.getErrorMessage());
         } catch (Exception e) {

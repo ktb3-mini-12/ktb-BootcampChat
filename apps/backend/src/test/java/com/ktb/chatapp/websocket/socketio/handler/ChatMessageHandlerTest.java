@@ -19,6 +19,7 @@ import com.ktb.chatapp.service.SessionService;
 import com.ktb.chatapp.service.SessionValidationResult;
 import com.ktb.chatapp.service.RateLimitService;
 import com.ktb.chatapp.service.RateLimitCheckResult;
+import com.ktb.chatapp.pubsub.RedisPubSubService;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +48,7 @@ class ChatMessageHandlerTest {
     @Mock private BannedWordChecker bannedWordChecker;
     @Mock private RateLimitService rateLimitService;
     @Mock private MessageRepository messageRepository;
+    @Mock private RedisPubSubService redisPubSubService;
 
     @Mock private SocketIOClient client;
     @Mock private BroadcastOperations broadcastOperations;
@@ -62,7 +64,7 @@ class ChatMessageHandlerTest {
         chatMessageHandler = new ChatMessageHandler(
                 socketIOServer, cacheService, fileRepository,
                 aiService, sessionService, bannedWordChecker, rateLimitService,
-                meterRegistry, messageRepository
+                meterRegistry, messageRepository, redisPubSubService
         );
     }
 
