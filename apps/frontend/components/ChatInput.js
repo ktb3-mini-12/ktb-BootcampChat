@@ -27,7 +27,7 @@ const ChatInput = forwardRef(
       setShowMentionList = () => {},
       setMentionFilter = () => {},
       setMentionIndex = () => {},
-      room = null, // room prop 추가
+      room = null,
     },
     ref
   ) => {
@@ -182,13 +182,11 @@ const ChatInput = forwardRef(
     }, [showEmojiPicker, setShowEmojiPicker, files, messageInputRef, handleFileValidationAndPreview]);
 
     const calculateMentionPosition = useCallback((textarea, atIndex) => {
-      // Get all text before @ symbol
       const textBeforeAt = textarea.value.slice(0, atIndex);
       const lines = textBeforeAt.split("\n");
       const currentLineIndex = lines.length - 1;
       const currentLineText = lines[currentLineIndex];
 
-      // Create a hidden div to measure exact text width
       const measureDiv = document.createElement("div");
       measureDiv.style.position = "absolute";
       measureDiv.style.visibility = "hidden";
@@ -205,7 +203,6 @@ const ChatInput = forwardRef(
       const textWidth = measureDiv.offsetWidth;
       document.body.removeChild(measureDiv);
 
-      // Get textarea position and compute styles
       const textareaRect = textarea.getBoundingClientRect();
       const computedStyle = window.getComputedStyle(textarea);
       const paddingLeft = parseInt(computedStyle.paddingLeft);
@@ -213,18 +210,14 @@ const ChatInput = forwardRef(
       const lineHeight = parseInt(computedStyle.lineHeight) || parseFloat(computedStyle.fontSize) * 1.5;
       const scrollTop = textarea.scrollTop;
 
-      // Calculate exact position of @ symbol
       let left = textareaRect.left + paddingLeft + textWidth;
-      // Position directly above the @ character (with small gap)
       let top = textareaRect.top + paddingTop + currentLineIndex * lineHeight - scrollTop;
 
-      // Ensure dropdown stays within viewport
-      const dropdownWidth = 320; // Approximate width
-      const dropdownHeight = 250; // Approximate height
+      const dropdownWidth = 320;
+      const dropdownHeight = 250;
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
 
-      // Adjust horizontal position if needed
       if (left + dropdownWidth > viewportWidth) {
         left = viewportWidth - dropdownWidth - 10;
       }
@@ -232,14 +225,11 @@ const ChatInput = forwardRef(
         left = 10;
       }
 
-      // Position dropdown 40px lower to be closer to the @ cursor
-      top = top + 40; // Move 40px down from the cursor line
+      top = top + 40;
 
-      // If not enough space above, show below
       if (top - dropdownHeight < 10) {
         top = textareaRect.top + paddingTop + (currentLineIndex + 1) * lineHeight - scrollTop + 2;
       } else {
-        // Show above - adjust top to account for dropdown height
         top = top - dropdownHeight;
       }
 
@@ -264,7 +254,6 @@ const ChatInput = forwardRef(
             setShowMentionList(true);
             setMentionIndex(0);
 
-            // Calculate and set mention dropdown position
             const position = calculateMentionPosition(e.target, lastAtSymbol);
             setMentionPosition(position);
             return;
@@ -306,7 +295,7 @@ const ChatInput = forwardRef(
     const handleKeyDown = useCallback(
       (e) => {
         if (showMentionList) {
-          const participants = getFilteredParticipants(room); // room 객체 전달
+          const participants = getFilteredParticipants(room);
           const participantsCount = participants.length;
 
           switch (e.key) {
@@ -357,7 +346,7 @@ const ChatInput = forwardRef(
         setMentionIndex,
         setShowMentionList,
         setShowEmojiPicker,
-        room, // room 의존성 추가
+        room,
       ]
     );
 
@@ -429,7 +418,7 @@ const ChatInput = forwardRef(
 
           <VStack gap="$100" width="100%">
             <VStack gap="$025" className="relative">
-              <HStack gap="$200">
+              <HStack gap="$200" alignItems="flex-end">
                 <Textarea
                   ref={messageInputRef}
                   value={message}
@@ -450,6 +439,7 @@ const ChatInput = forwardRef(
                 />
 
                 <IconButton
+                  key="chat-send-btn"
                   size="xl"
                   onClick={handleSubmit}
                   disabled={isDisabled || (!message.trim() && files.length === 0)}

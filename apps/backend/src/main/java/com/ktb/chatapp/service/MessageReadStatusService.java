@@ -21,6 +21,7 @@ public class MessageReadStatusService {
 
     /**
      * 메시지 읽음 상태 업데이트
+     * 최적화: saveAll()을 사용하여 벌크 업데이트 수행
      *
      * @param messageIds 읽음 상태를 업데이트할 메시지 리스트
      * @param userId 읽은 사용자 ID
@@ -29,28 +30,36 @@ public class MessageReadStatusService {
         if (messageIds.isEmpty()) {
             return;
         }
-        
+
         Message.MessageReader readerInfo = Message.MessageReader.builder()
                 .userId(userId)
                 .readAt(LocalDateTime.now())
                 .build();
-        
+
         try {
             List<Message> messagesToUpdate = messageRepository.findAllById(messageIds);
+            boolean isUpdated = false; // 실제로 변경사항이 있는지 체크
+
             for (Message message : messagesToUpdate) {
                 if (message.getReaders() == null) {
                     message.setReaders(new ArrayList<>());
                 }
                 boolean alreadyRead = message.getReaders().stream()
                         .anyMatch(r -> r.getUserId().equals(userId));
+
                 if (!alreadyRead) {
                     message.getReaders().add(readerInfo);
+                    isUpdated = true;
                 }
-                messageRepository.save(message);
+                // 여기서 save() 하지 않음!
             }
-            
-            log.debug("Read status updated for {} messages by user {}",
-                    messagesToUpdate.size(), userId);
+
+            // 변경된 게 있을 때만 한 번에 저장 (Bulk Write)
+            if (isUpdated) {
+                messageRepository.saveAll(messagesToUpdate);
+                log.debug("Read status updated for {} messages by user {}",
+                        messagesToUpdate.size(), userId);
+            }
 
         } catch (Exception e) {
             log.error("Read status update error for user {}", userId, e);
