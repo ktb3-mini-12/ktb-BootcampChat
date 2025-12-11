@@ -53,3 +53,6 @@ yarn-error.log*
 # Misc
 .cache/
 *.tsbuildinfo
+
+# Local documentation (not tracked)
+docs/
