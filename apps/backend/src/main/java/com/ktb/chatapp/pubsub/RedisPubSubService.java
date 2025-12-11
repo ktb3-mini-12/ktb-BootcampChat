@@ -153,10 +153,22 @@ public class RedisPubSubService {
     }
 
     /**
-     * JSON payload를 Map으로 역직렬화
+     * JSON payload를 역직렬화 (Map 또는 List)
      */
     private Object deserializePayload(String payload) throws JsonProcessingException {
-        return objectMapper.readValue(payload, new TypeReference<Map<String, Object>>() {});
+        if (payload == null || payload.isBlank()) {
+            log.warn("Empty or null payload received, returning empty map");
+            return Map.of();
+        }
+
+        String trimmed = payload.trim();
+        if (trimmed.startsWith("[")) {
+            // List 타입 (예: participants)
+            return objectMapper.readValue(trimmed, new TypeReference<java.util.List<Map<String, Object>>>() {});
+        } else {
+            // Map 타입 (예: message)
+            return objectMapper.readValue(trimmed, new TypeReference<Map<String, Object>>() {});
+        }
     }
 
     /**
