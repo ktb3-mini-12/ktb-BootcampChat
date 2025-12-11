@@ -297,22 +297,16 @@ public class AuthController {
 
             // 토큰에서 사용자 정보 추출
             String userId = jwtService.extractUserId(token);
-            
-            Optional<User> userOpt = userRepository.findById(userId);
+			
+			var validationResult = sessionService.validateSession(userId, sessionId);
 
-            if (userOpt.isEmpty()) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                        .body(new TokenVerifyResponse(false, "사용자를 찾을 수 없습니다.", null));
-            }
-
-            User user = userOpt.get();
             // 세션 유효성 검증
-            if (!sessionService.validateSession(user.getId(), sessionId).isValid()) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                        .body(new TokenVerifyResponse(false, "만료된 세션입니다.", null));
-            }
+			if(!validationResult.isValid()) {
+				return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+						.body(new TokenVerifyResponse(false, "만료된 세션입니다.", null));
+			}
 
-            AuthUserDto authUserDto = new AuthUserDto(user.getId(), user.getName(), user.getEmail(), user.getProfileImage());
+            AuthUserDto authUserDto = new AuthUserDto(userId, "", "", null);
             return ResponseEntity.ok(new TokenVerifyResponse(true, "토큰이 유효합니다.", authUserDto));
 
         } catch (Exception e) {
