@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo, forwardRef } from 'react';
+import Image from "next/image"; // Next.js Image 컴포넌트 추가
 import { Avatar } from '@vapor-ui/core';
 import { generateColorFromEmail, getContrastTextColor } from '@/utils/colorUtils';
 
-// [최적화 1] 전역 색상 캐시 (컴포넌트 외부에 선언하여 메모리 공유)
-// 이메일이 같으면 무조건 같은 색상이 나오므로 매번 계산할 필요가 없습니다.
+// [최적화 1] 전역 색상 캐시 (메모리 공유 및 CPU 연산 최소화)
 const colorCache = new Map();
 
 const getCachedColors = (email) => {
@@ -18,11 +18,13 @@ const getCachedColors = (email) => {
   const color = getContrastTextColor(backgroundColor);
   const colors = { backgroundColor, color };
 
-  // 캐시 저장 (메모리 누수 방지를 위해 사이즈 제한을 둘 수도 있지만, 텍스트라 부담 적음)
   colorCache.set(email, colors);
   return colors;
 };
 
+/**
+ * CustomAvatar 컴포넌트 (최적화 버전)
+ */
 const CustomAvatar = forwardRef(({
   user,
   size = 'md',
@@ -51,7 +53,7 @@ const CustomAvatar = forwardRef(({
     return `${process.env.NEXT_PUBLIC_API_URL}${imagePath}`;
   }, [src]);
 
-  // persistent 모드일 때만 실행되는 로직들
+  // --- persistent 모드 로직 (V1 유지) ---
   useEffect(() => {
     if (!persistent) return;
 
@@ -86,18 +88,18 @@ const CustomAvatar = forwardRef(({
     };
   }, [persistent, getImageUrl, user?.id, user?.profileImage]);
 
-  const handleImageError = useCallback((e) => {
-    if (!persistent) return; // persistent 아니면 굳이 상태 업데이트 안함 (무한 루프 방지)
+  // 이미지 에러 핸들러 (V2의 간결한 버전으로 통일)
+  const handleImageError = useCallback(() => {
+    if (!persistent) return;
 
-    e.preventDefault();
-    setImageError(true); // persistent일 때만 fallback으로 전환하기 위함
+    setImageError(true);
+    // V2의 디버그 로그 제거 (프로덕션 환경 최적화)
   }, [persistent]);
 
-  // [최적화 4] 최종 렌더링 값 계산
+  // [최적화 4] 최종 렌더링 URL 메모이제이션
   const finalImageUrl = useMemo(() => {
     if (!showImage) return undefined;
 
-    // persistent 모드면 상태값 사용, 아니면 바로 계산 (리렌더링 방지)
     if (persistent) {
       return currentImage && !imageError ? currentImage : undefined;
     }
@@ -120,21 +122,25 @@ const CustomAvatar = forwardRef(({
       shape="circle"
       size={size}
       render={renderProp}
-      src={finalImageUrl}
       className={className}
       style={{
         backgroundColor,
         color,
         cursor: onClick ? 'pointer' : 'default',
+        // V1의 추가 스타일을 유지합니다.
         ...style
       }}
       {...props}
     >
+      {/* V2의 Next/Image 컴포넌트 이식 (Next.js 이미지 최적화 적용) */}
       {finalImageUrl && (
-        <Avatar.ImagePrimitive
-          onError={handleImageError}
+        <Image
+          src={finalImageUrl}
           alt={`${user?.name}'s profile`}
-          loading="lazy" // [추가] 네이티브 레이지 로딩 적용
+          layout="fill"
+          objectFit="cover"
+          onError={persistent ? handleImageError : undefined}
+          // V1의 loading="lazy"는 layout="fill" 시 Next.js가 자동 처리하므로 생략
         />
       )}
       <Avatar.FallbackPrimitive style={{ backgroundColor, color, fontWeight: '500' }}>
@@ -146,8 +152,7 @@ const CustomAvatar = forwardRef(({
 
 CustomAvatar.displayName = 'CustomAvatar';
 
-// [최적화 5] React.memo 적용
-// user 객체가 바뀌지 않으면 리렌더링 하지 않음
+// [최적화 5] React.memo 적용 (커스텀 비교 함수)
 export default React.memo(CustomAvatar, (prev, next) => {
   return (
     prev.user?.id === next.user?.id &&
