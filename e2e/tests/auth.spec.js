@@ -10,14 +10,14 @@ test.describe.serial('인증 E2E 테스트', () => {
     // 테스트용 계정 생성
     const context = await browser.newContext();
     const page = await context.newPage();
-    
+
     testUser = {
       email: `testuser_${Date.now()}@example.com`,
       password: 'Password123!',
       passwordConfirm: 'Password123!',
       name: 'Test User',
     };
-    
+
     await registerAction(page, testUser);
 
     await page.waitForTimeout(1000);
@@ -39,7 +39,7 @@ test.describe.serial('인증 E2E 테스트', () => {
       await loginAction(page, {
         email: testUser.email,
         password: 'WrongPassword123!',
-      });
+      }, false);
 
       // 검증
       await expect(page).toHaveURL(`${BASE_URL}`);
@@ -52,7 +52,7 @@ test.describe.serial('인증 E2E 테스트', () => {
       await loginAction(page, {
         email: 'nonexistent@example.com',
         password: 'password123',
-      });
+      }, false);
 
       // 검증
       await expect(page).toHaveURL(`${BASE_URL}/`);
@@ -65,7 +65,7 @@ test.describe.serial('인증 E2E 테스트', () => {
       await loginAction(page, {
         email: '',
         password: '',
-      });
+      }, false);
 
       // 검증
       await expect(page).toHaveURL(`${BASE_URL}/`);

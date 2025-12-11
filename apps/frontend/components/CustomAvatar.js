@@ -23,7 +23,7 @@ const getCachedColors = (email) => {
 };
 
 /**
- * CustomAvatar 컴포넌트 (최적화 버전)
+ * CustomAvatar 컴포넌트 (최종 최적화 버전)
  */
 const CustomAvatar = forwardRef(({
   user,
@@ -53,7 +53,7 @@ const CustomAvatar = forwardRef(({
     return `${process.env.NEXT_PUBLIC_API_URL}${imagePath}`;
   }, [src]);
 
-  // --- persistent 모드 로직 (V1 유지) ---
+  // --- persistent 모드 로직 (실시간 프로필 업데이트) ---
   useEffect(() => {
     if (!persistent) return;
 
@@ -88,12 +88,9 @@ const CustomAvatar = forwardRef(({
     };
   }, [persistent, getImageUrl, user?.id, user?.profileImage]);
 
-  // 이미지 에러 핸들러 (V2의 간결한 버전으로 통일)
   const handleImageError = useCallback(() => {
     if (!persistent) return;
-
     setImageError(true);
-    // V2의 디버그 로그 제거 (프로덕션 환경 최적화)
   }, [persistent]);
 
   // [최적화 4] 최종 렌더링 URL 메모이제이션
@@ -118,7 +115,7 @@ const CustomAvatar = forwardRef(({
   return (
     <Avatar.Root
       ref={ref}
-      key={user?._id || user?.id} // key는 여기서 쓰는게 아니라 부모에서 써야하지만 안전장치
+      key={user?._id || user?.id}
       shape="circle"
       size={size}
       render={renderProp}
@@ -127,12 +124,11 @@ const CustomAvatar = forwardRef(({
         backgroundColor,
         color,
         cursor: onClick ? 'pointer' : 'default',
-        // V1의 추가 스타일을 유지합니다.
         ...style
       }}
       {...props}
     >
-      {/* V2의 Next/Image 컴포넌트 이식 (Next.js 이미지 최적화 적용) */}
+      {/* Next/Image 컴포넌트 사용 */}
       {finalImageUrl && (
         <Image
           src={finalImageUrl}
@@ -140,7 +136,6 @@ const CustomAvatar = forwardRef(({
           layout="fill"
           objectFit="cover"
           onError={persistent ? handleImageError : undefined}
-          // V1의 loading="lazy"는 layout="fill" 시 Next.js가 자동 처리하므로 생략
         />
       )}
       <Avatar.FallbackPrimitive style={{ backgroundColor, color, fontWeight: '500' }}>
