@@ -78,7 +78,8 @@ public class FileController {
                 fileData.put("mimetype", result.getFile().getMimetype());
                 fileData.put("size", result.getFile().getSize());
                 fileData.put("uploadDate", result.getFile().getUploadDate());
-                
+                fileData.put("url", result.getFile().getUrl());  // S3 Public URL
+
                 response.put("file", fileData);
 
                 return ResponseEntity.ok(response);
@@ -214,8 +215,7 @@ public class FileController {
                     .replaceAll("\\+", "%20");
 
             String contentDisposition = String.format(
-                    "inline; filename=\"%s\"; filename*=UTF-8''%s",
-                    originalFilename,
+                    "inline; filename*=UTF-8''%s",
                     encodedFilename
             );
 

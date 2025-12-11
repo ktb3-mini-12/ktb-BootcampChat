@@ -44,6 +44,11 @@ public class File {
     private LocalDateTime uploadDate;
 
     /**
+     * S3 Public URL (퍼블릭 버킷용)
+     */
+    private String url;
+
+    /**
      * 미리보기 지원 여부 확인
      */
     public boolean isPreviewable() {

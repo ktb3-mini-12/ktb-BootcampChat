@@ -2,6 +2,9 @@
 
 // 환경 변수에서 API URL 가져오기
 const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+const s3BucketName = process.env.NEXT_PUBLIC_S3_BUCKET_NAME;
+const awsRegion = process.env.NEXT_PUBLIC_AWS_REGION || "ap-northeast-2";
+
 let remotePatterns = [];
 
 // API URL이 설정된 경우에만 remotePatterns 구성
@@ -18,6 +21,23 @@ if (apiUrl) {
     console.error("Invalid NEXT_PUBLIC_API_URL for next/image configuration:", error);
   }
 }
+
+// S3 버킷 도메인 추가 (환경 변수로 설정된 경우)
+if (s3BucketName) {
+  remotePatterns.push({
+    protocol: "https",
+    hostname: `${s3BucketName}.s3.${awsRegion}.amazonaws.com`,
+    pathname: "/**",
+  });
+}
+
+// 기본 S3 패턴 추가 (개발/테스트 환경용)
+// Next.js는 와일드카드를 ** 형식으로 지원
+remotePatterns.push({
+  protocol: "https",
+  hostname: "**.s3.**.amazonaws.com",
+  pathname: "/**",
+});
 
 const nextConfig = {
   reactStrictMode: false, // 에러 처리 문제 해결을 위해 일시적으로 비활성화
