@@ -76,10 +76,7 @@ class ChatMessageHandlerTest {
         String userId = "user1";
         String content = "Hello World";
 
-        ChatMessageRequest request = new ChatMessageRequest();
-        request.setRoom(roomId);
-        request.setType("text");
-        request.setContent(content);
+        ChatMessageRequest request = new ChatMessageRequest(roomId, "text", content, null, null);
 
         SocketUser socketUser = new SocketUser(userId, "Tester", "test@example.com", "session1");
 
