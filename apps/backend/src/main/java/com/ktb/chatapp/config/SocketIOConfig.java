@@ -78,7 +78,7 @@ public class SocketIOConfig {
      */
     @Bean
     @Role(ROLE_INFRASTRUCTURE)
-    public BeanPostProcessor springAnnotationScanner(@Lazy SocketIOServer socketIOServer) {
+    public static BeanPostProcessor springAnnotationScanner(@Lazy SocketIOServer socketIOServer) {
         return new SpringAnnotationScanner(socketIOServer);
     }
     
