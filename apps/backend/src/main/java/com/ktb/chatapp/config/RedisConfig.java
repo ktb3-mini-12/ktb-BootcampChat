@@ -39,9 +39,7 @@ public class RedisConfig {
 				.setTimeout(3000); 
 		
 		try {
-			RedissonClient client = Redisson.create(config);
-			log.info("Redisson client initialized with PoolSize 1024: {}:{}", host, port);
-			return client;
+			return Redisson.create(config);
 		} catch (RedisConnectionException e) {
 			log.error("Failed to initialize Redisson client: {}", e.getMessage(), e);
 			throw e;

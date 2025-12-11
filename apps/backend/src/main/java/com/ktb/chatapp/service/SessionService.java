@@ -96,8 +96,7 @@ public class SessionService {
 
             // Update last activity
             session.setLastActivity(now);
-            session.setExpiresAt(Instant.now().plusSeconds(SESSION_TTL_SEC));
-            session = sessionStore.save(session);
+            sessionStore.refreshExpiration(userId, SESSION_TTL_SEC);
 
             SessionData sessionData = toSessionData(session);
             return SessionValidationResult.valid(sessionData);
