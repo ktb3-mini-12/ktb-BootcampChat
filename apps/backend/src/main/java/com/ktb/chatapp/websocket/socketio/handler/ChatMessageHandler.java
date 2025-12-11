@@ -48,7 +48,7 @@ public class ChatMessageHandler {
 	private final RateLimitService rateLimitService;
 	private final MeterRegistry meterRegistry;
 	private final MessageRepository messageRepository;
-
+	
 	// Metrics 캐시 (매번 등록하지 않고 재사용)
 	private final Map<String, Timer> timerCache = new ConcurrentHashMap<>();
 	private final Map<String, Counter> counterCache = new ConcurrentHashMap<>();
@@ -123,7 +123,7 @@ public class ChatMessageHandler {
 				timerSample.stop(createTimer("error", "user_not_found"));
 				return;
 			}
-
+			
 			String roomId = data.getRoom();
 			// 캐시 서비스를 통한 Room 조회 (DB 부하 감소)
 			Room room = cacheService.findRoomById(roomId).orElse(null);
@@ -168,7 +168,7 @@ public class ChatMessageHandler {
 			// 브로드캐스트 먼저 실행 (실시간 응답 보장)
 			socketIOServer.getRoomOperations(roomId)
 					.sendEvent(MESSAGE, createMessageResponse(message, sender));
-
+			
 			// MongoDB에 비동기 저장 (Virtual Thread가 처리)
 			CompletableFuture.runAsync(() -> {
 				try {
@@ -178,10 +178,10 @@ public class ChatMessageHandler {
 							message.getId(), roomId, e);
 				}
 			});
-
+			
 			// AI 멘션 처리 (이미 비동기)
 			aiService.handleAIMentions(roomId, socketUser.id(), messageContent);
-
+			
 			// 세션 활동 업데이트 (비동기)
 			CompletableFuture.runAsync(() -> sessionService.updateLastActivity(socketUser.id()));
 			
@@ -279,7 +279,7 @@ public class ChatMessageHandler {
 						.register(meterRegistry)
 		);
 	}
-
+	
 	private void recordMessageSuccess(String messageType) {
 		String key = "success:" + messageType;
 		counterCache.computeIfAbsent(key, k ->
@@ -290,7 +290,7 @@ public class ChatMessageHandler {
 						.register(meterRegistry)
 		).increment();
 	}
-
+	
 	private void recordError(String errorType) {
 		String key = "error:" + errorType;
 		counterCache.computeIfAbsent(key, k ->

@@ -40,4 +40,13 @@ public class SessionMongoStore implements SessionStore {
     public void deleteAll(String userId) {
         sessionRepository.deleteByUserId(userId);
     }
+	
+	@Override
+	public void refreshExpiration(String userId, long ttlSeconds) {
+		sessionRepository.findByUserId(userId).ifPresent(session -> {
+			session.setExpiresAt(java.time.Instant.now().plusSeconds(ttlSeconds));
+			
+			sessionRepository.save(session);
+		});
+	}
 }
