@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { useRouter } from 'next/router';
 import dynamic from 'next/dynamic';
 import { LockIcon, ErrorCircleIcon, NetworkIcon, RefreshOutlineIcon, GroupIcon, PlusCircleIcon } from '@vapor-ui/icons';
@@ -38,6 +38,61 @@ const RETRY_CONFIG = {
 const SCROLL_THRESHOLD = 50;
 const SCROLL_DEBOUNCE_DELAY = 150;
 const INITIAL_PAGE_SIZE = 10;
+
+// 테이블 행 컴포넌트 분리 및 메모이제이션
+const RoomTableRow = memo(({ room, onJoin, isDisabled }) => (
+  <Table.Row key={room._id}>
+    <Table.Cell>
+      <VStack gap="$050" alignItems="flex-start">
+        <Text style={{ fontWeight: 500 }}>
+          {room.name}
+        </Text>
+        {room.hasPassword && (
+          <HStack gap="$050" alignItems="center" color="$warning-100" >
+            <LockIcon size={16} />
+            <Text typography="body3" color="$warning-100">
+              비밀번호 필요
+            </Text>
+          </HStack>
+        )}
+      </VStack>
+    </Table.Cell>
+    <Table.Cell>
+      <HStack gap="$050" alignItems="center">
+        <GroupIcon />
+        <Text typography="body2">
+          {room.participants?.length || 0}
+        </Text>
+      </HStack>
+    </Table.Cell>
+    <Table.Cell>
+      {room.recentMessageCount > 0 ? room.recentMessageCount : '-'}
+    </Table.Cell>
+    <Table.Cell>
+      <time dateTime={new Date(room.createdAt).toISOString()}>
+        {new Date(room.createdAt).toLocaleString('ko-KR', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        })}
+      </time>
+    </Table.Cell>
+    <Table.Cell>
+      <Button
+        colorPalette="primary"
+        size="md"
+        onClick={onJoin}
+        disabled={isDisabled}
+        data-testid="join-chat-room-button"
+      >
+        입장
+      </Button>
+    </Table.Cell>
+  </Table.Row>
+));
+RoomTableRow.displayName = 'RoomTableRow';
 
 const LoadingIndicator = ({ text }) => (
   <HStack gap="$200" justifyContent="center" alignItems="center">
@@ -540,7 +595,7 @@ function ChatRoomsComponent() {
     };
   }, [currentUser]);
 
-  const handleJoinRoom = async (roomId) => {
+  const handleJoinRoom = useCallback(async (roomId) => {
     if (connectionStatus !== CONNECTION_STATUS.CONNECTED) {
       setError({
         title: '채팅방 입장 실패',
@@ -576,10 +631,33 @@ function ChatRoomsComponent() {
     } finally {
       setJoiningRoom(false);
     }
-  };
+  }, [connectionStatus, router]);
 
-  const renderRoomsTable = () => {
+  // 각 행의 onClick 핸들러를 캐싱하기 위한 맵
+  const joinHandlersRef = useRef(new Map());
+
+  // roomId에 해당하는 캐싱된 핸들러 반환
+  const getJoinHandler = useCallback((roomId) => {
+    if (!joinHandlersRef.current.has(roomId)) {
+      joinHandlersRef.current.set(roomId, () => handleJoinRoom(roomId));
+    }
+    return joinHandlersRef.current.get(roomId);
+  }, [handleJoinRoom]);
+
+  // rooms 변경 시 불필요한 핸들러 정리
+  useEffect(() => {
+    const currentRoomIds = new Set(rooms.map(r => r._id));
+    joinHandlersRef.current.forEach((_, key) => {
+      if (!currentRoomIds.has(key)) {
+        joinHandlersRef.current.delete(key);
+      }
+    });
+  }, [rooms]);
+
+  const renderRoomsTable = useCallback(() => {
     if (!rooms || rooms.length === 0) return null;
+
+    const isDisabled = connectionStatus !== CONNECTION_STATUS.CONNECTED;
 
     return (
       <Table.Root style={{ width: '100%' }}>
@@ -603,69 +681,17 @@ function ChatRoomsComponent() {
 
         <Table.Body>
           {rooms.map((room) => (
-            <Table.Row key={room._id}>
-              <Table.Cell>
-                <VStack gap="$050" alignItems="flex-start">
-                  <Text style={{ fontWeight: 500 }}>
-                    {room.name}
-                  </Text>
-                  {room.hasPassword && (
-                    <HStack gap="$050" alignItems="center" color="$warning-100" >
-                      <LockIcon size={16} />
-                      <Text typography="body3" color="$warning-100">
-                        비밀번호 필요
-                      </Text>
-                    </HStack>
-                  )}
-                </VStack>
-              </Table.Cell>
-              <Table.Cell>
-                <HStack
-                  gap="$050"
-                  alignItems="center"
-                >
-                  <GroupIcon />
-                  <Text typography="body2">
-                    {room.participants?.length || 0}
-                  </Text>
-                </HStack>
-              </Table.Cell>
-              <Table.Cell>
-                {room.recentMessageCount > 0 ? (
-                  room.recentMessageCount
-                ) : (
-                  '-'
-                )}
-              </Table.Cell>
-              <Table.Cell>
-                <time dateTime={new Date(room.createdAt).toISOString()}>
-                  {new Date(room.createdAt).toLocaleString('ko-KR', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </time>
-              </Table.Cell>
-              <Table.Cell>
-                <Button
-                  colorPalette="primary"
-                  // variant="outline"
-                  size="md"
-                  onClick={() => handleJoinRoom(room._id)}
-                  disabled={connectionStatus !== CONNECTION_STATUS.CONNECTED}
-                  data-testid={`join-chat-room-button`}
-                >
-                  입장
-                </Button>
-              </Table.Cell>
-            </Table.Row>
+            <RoomTableRow
+              key={room._id}
+              room={room}
+              onJoin={getJoinHandler(room._id)}
+              isDisabled={isDisabled}
+            />
           ))}
         </Table.Body>
       </Table.Root>
     );
-  };
+  }, [rooms, connectionStatus, getJoinHandler]);
 
 
   return (
