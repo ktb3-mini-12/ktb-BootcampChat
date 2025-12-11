@@ -48,42 +48,10 @@ public class ChatMessageHandler {
 	private final RateLimitService rateLimitService;
 	private final MeterRegistry meterRegistry;
 	private final MessageRepository messageRepository;
-
+	
 	// Metrics 캐시 (매번 등록하지 않고 재사용)
 	private final Map<String, Timer> timerCache = new ConcurrentHashMap<>();
 	private final Map<String, Counter> counterCache = new ConcurrentHashMap<>();
-	
-	private Timer processingSuccessTimer;
-	private Timer processingErrorTimer;
-	private Counter successCounter;
-	private Counter errorCounter;
-	private Counter rateLimitCounter;
-	
-	@PostConstruct
-	void initMeters() {
-		processingSuccessTimer = Timer.builder("socketio.messages.processing.time")
-				.description("Socket.IO message processing time")
-				.tag("status", "success")
-				.register(meterRegistry);
-		
-		processingErrorTimer = Timer.builder("socketio.messages.processing.time")
-				.description("Socket.IO message processing time")
-				.tag("status", "error")
-				.register(meterRegistry);
-		
-		successCounter = Counter.builder("socketio.messages.total")
-				.description("Total Socket.IO messages processed")
-				.tag("status", "success")
-				.register(meterRegistry);
-		
-		errorCounter = Counter.builder("socketio.messages.errors")
-				.description("Socket.IO message processing errors")
-				.register(meterRegistry);
-		
-		rateLimitCounter = Counter.builder("socketio.messages.rate_limit")
-				.description("Socket.IO rate limit exceeded count")
-				.register(meterRegistry);
-	}
 	
 	@OnEvent(CHAT_MESSAGE)
 	public void handleChatMessage(SocketIOClient client, ChatMessageRequest data) {
@@ -95,7 +63,7 @@ public class ChatMessageHandler {
 					"code", "MESSAGE_ERROR",
 					"message", "메시지 데이터가 없습니다."
 			));
-			timerSample.stop(processingErrorTimer);
+			timerSample.stop(createTimer("error", "null_data"));
 			return;
 		}
 		
@@ -107,7 +75,7 @@ public class ChatMessageHandler {
 					"code", "SESSION_EXPIRED",
 					"message", "세션이 만료되었습니다. 다시 로그인해주세요."
 			));
-			timerSample.stop(processingErrorTimer);
+			timerSample.stop(createTimer("error", "session_null"));
 			return;
 		}
 		
@@ -119,7 +87,7 @@ public class ChatMessageHandler {
 					"code", "SESSION_EXPIRED",
 					"message", "세션이 만료되었습니다. 다시 로그인해주세요."
 			));
-			timerSample.stop(processingErrorTimer);
+			timerSample.stop(createTimer("error", "session_expired"));
 			return;
 		}
 		
@@ -128,7 +96,10 @@ public class ChatMessageHandler {
 				rateLimitService.checkRateLimit(socketUser.id(), 10000, Duration.ofMinutes(1));
 		if (!rateLimitResult.allowed()) {
 			recordError("rate_limit_exceeded");
-			rateLimitCounter.increment();
+			Counter.builder("socketio.messages.rate_limit")
+					.description("Socket.IO rate limit exceeded count")
+					.register(meterRegistry)
+					.increment();
 			client.sendEvent(ERROR, Map.of(
 					"code", "RATE_LIMIT_EXCEEDED",
 					"message", "메시지 전송 횟수 제한을 초과했습니다. 잠시 후 다시 시도해주세요.",
@@ -136,7 +107,7 @@ public class ChatMessageHandler {
 			));
 			log.warn("Rate limit exceeded for user: {}, retryAfter: {}s",
 					socketUser.id(), rateLimitResult.retryAfterSeconds());
-			timerSample.stop(processingErrorTimer);
+			timerSample.stop(createTimer("error", "rate_limit"));
 			return;
 		}
 		
@@ -149,10 +120,10 @@ public class ChatMessageHandler {
 						"code", "MESSAGE_ERROR",
 						"message", "User not found"
 				));
-				timerSample.stop(processingErrorTimer);
+				timerSample.stop(createTimer("error", "user_not_found"));
 				return;
 			}
-
+			
 			String roomId = data.getRoom();
 			// 캐시 서비스를 통한 Room 조회 (DB 부하 감소)
 			Room room = cacheService.findRoomById(roomId).orElse(null);
@@ -162,7 +133,7 @@ public class ChatMessageHandler {
 						"code", "MESSAGE_ERROR",
 						"message", "채팅방 접근 권한이 없습니다."
 				));
-				timerSample.stop(processingErrorTimer);
+				timerSample.stop(createTimer("error", "room_access_denied"));
 				return;
 			}
 			
@@ -177,7 +148,7 @@ public class ChatMessageHandler {
 						"code", "MESSAGE_REJECTED",
 						"message", "금칙어가 포함된 메시지는 전송할 수 없습니다."
 				));
-				timerSample.stop(processingErrorTimer);
+				timerSample.stop(createTimer("error", "banned_word"));
 				return;
 			}
 			
@@ -190,14 +161,14 @@ public class ChatMessageHandler {
 			
 			if (message == null) {
 				log.warn("Empty message - ignoring. room: {}, userId: {}, messageType: {}", roomId, socketUser.id(), messageType);
-				timerSample.stop(processingSuccessTimer);
+				timerSample.stop(createTimer("ignored", messageType));
 				return;
 			}
 			
 			// 브로드캐스트 먼저 실행 (실시간 응답 보장)
 			socketIOServer.getRoomOperations(roomId)
 					.sendEvent(MESSAGE, createMessageResponse(message, sender));
-
+			
 			// MongoDB에 비동기 저장 (Virtual Thread가 처리)
 			CompletableFuture.runAsync(() -> {
 				try {
@@ -207,16 +178,16 @@ public class ChatMessageHandler {
 							message.getId(), roomId, e);
 				}
 			});
-
+			
 			// AI 멘션 처리 (이미 비동기)
 			aiService.handleAIMentions(roomId, socketUser.id(), messageContent);
-
+			
 			// 세션 활동 업데이트 (비동기)
 			CompletableFuture.runAsync(() -> sessionService.updateLastActivity(socketUser.id()));
 			
 			// Record success metrics
-			recordMessageSuccess();
-			timerSample.stop(processingSuccessTimer);
+			recordMessageSuccess(messageType);
+			timerSample.stop(createTimer("success", messageType));
 			
 			log.debug("Message processed - type: {}, room: {}",
 					message.getType(), roomId);
@@ -228,7 +199,7 @@ public class ChatMessageHandler {
 					"code", "MESSAGE_ERROR",
 					"message", e.getMessage() != null ? e.getMessage() : "메시지 전송 중 오류가 발생했습니다."
 			));
-			timerSample.stop(processingErrorTimer);
+			timerSample.stop(createTimer("error", "exception"));
 		}
 	}
 	
@@ -308,7 +279,7 @@ public class ChatMessageHandler {
 						.register(meterRegistry)
 		);
 	}
-
+	
 	private void recordMessageSuccess(String messageType) {
 		String key = "success:" + messageType;
 		counterCache.computeIfAbsent(key, k ->
@@ -319,7 +290,7 @@ public class ChatMessageHandler {
 						.register(meterRegistry)
 		).increment();
 	}
-
+	
 	private void recordError(String errorType) {
 		String key = "error:" + errorType;
 		counterCache.computeIfAbsent(key, k ->
