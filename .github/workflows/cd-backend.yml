@@ -55,6 +55,10 @@ jobs:
             name: api-5
           - host: BE_HOST_6
             name: api-6
+          - host: BE_HOST_7
+            name: api-7
+          - host: BE_HOST_8
+            name: api-8
       fail-fast: false
     steps:
       - name: Download JAR artifact

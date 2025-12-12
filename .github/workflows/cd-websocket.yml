@@ -55,6 +55,14 @@ jobs:
             name: ws-5
           - host: WS_HOST_6
             name: ws-6
+          - host: WS_HOST_7
+            name: ws-7
+          - host: WS_HOST_8
+            name: ws-8
+          - host: WS_HOST_9
+            name: ws-9
+          - host: WS_HOST_10
+            name: ws-10
       fail-fast: false
     steps:
       - name: Download JAR artifact
