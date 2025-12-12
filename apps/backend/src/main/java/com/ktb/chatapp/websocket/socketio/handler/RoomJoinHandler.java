@@ -11,10 +11,9 @@ import com.ktb.chatapp.model.Room;
 import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.repository.RoomRepository;
 import com.ktb.chatapp.repository.UserRepository;
+import com.ktb.chatapp.service.CacheService;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
 import com.ktb.chatapp.websocket.socketio.UserRooms;
-import com.ktb.chatapp.pubsub.RedisBroadcastMessage;
-import com.ktb.chatapp.pubsub.RedisPubSubService;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -44,7 +43,7 @@ public class RoomJoinHandler {
     private final UserRepository userRepository;
     private final UserRooms userRooms;
     private final MessageResponseMapper messageResponseMapper;
-    private final RedisPubSubService redisPubSubService;
+    private final CacheService cacheService;
     
     @OnEvent(JOIN_ROOM)
     public void handleJoinRoom(SocketIOClient client, String roomId) {
@@ -77,6 +76,7 @@ public class RoomJoinHandler {
 
             // MongoDB의 $addToSet 연산자를 사용한 원자적 업데이트
             roomRepository.addParticipant(roomId, userId);
+            cacheService.evictRoom(roomId); // 참여자 변경 즉시 캐시 무효화
 
             // Join socket room and add to user's room set
             client.joinRoom(roomId);
@@ -117,27 +117,12 @@ public class RoomJoinHandler {
             client.sendEvent(JOIN_ROOM_SUCCESS, response);
 
             // 입장 메시지 브로드캐스트
-            var joinMessageResponse = messageResponseMapper.mapToMessageResponse(joinMessage, null);
             socketIOServer.getRoomOperations(roomId)
-                .sendEvent(MESSAGE, joinMessageResponse);
-
-            // Redis Pub/Sub으로 다른 서버에 입장 메시지 브로드캐스트
-            redisPubSubService.publish(
-                    RedisBroadcastMessage.EVENT_ROOM_JOIN,
-                    roomId,
-                    joinMessageResponse
-            );
+                .sendEvent(MESSAGE, messageResponseMapper.mapToMessageResponse(joinMessage, null));
 
             // 참가자 목록 업데이트 브로드캐스트
             socketIOServer.getRoomOperations(roomId)
                 .sendEvent(PARTICIPANTS_UPDATE, participants);
-
-            // Redis Pub/Sub으로 다른 서버에 참가자 업데이트 브로드캐스트
-            redisPubSubService.publish(
-                    RedisBroadcastMessage.EVENT_PARTICIPANTS_UPDATE,
-                    roomId,
-                    participants
-            );
 
             log.info("User {} joined room {} successfully", userName, roomId);
 

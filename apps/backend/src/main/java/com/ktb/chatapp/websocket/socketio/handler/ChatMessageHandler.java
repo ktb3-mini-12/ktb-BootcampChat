@@ -11,6 +11,7 @@ import com.ktb.chatapp.dto.UserResponse;
 import com.ktb.chatapp.model.*;
 import com.ktb.chatapp.repository.FileRepository;
 import com.ktb.chatapp.repository.MessageRepository;
+import com.ktb.chatapp.repository.RoomRepository;
 import com.ktb.chatapp.util.BannedWordChecker;
 import com.ktb.chatapp.websocket.socketio.ai.AiService;
 import com.ktb.chatapp.service.CacheService;
@@ -19,8 +20,6 @@ import com.ktb.chatapp.service.SessionValidationResult;
 import com.ktb.chatapp.service.RateLimitService;
 import com.ktb.chatapp.service.RateLimitCheckResult;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
-import com.ktb.chatapp.pubsub.RedisPubSubService;
-import com.ktb.chatapp.pubsub.RedisBroadcastMessage;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -50,7 +49,7 @@ public class ChatMessageHandler {
 	private final RateLimitService rateLimitService;
 	private final MeterRegistry meterRegistry;
 	private final MessageRepository messageRepository;
-	private final RedisPubSubService redisPubSubService;
+	private final RoomRepository roomRepository;
 	
 	// Metrics 캐시 (매번 등록하지 않고 재사용)
 	private final Map<String, Timer> timerCache = new ConcurrentHashMap<>();
@@ -127,15 +126,22 @@ public class ChatMessageHandler {
 				return;
 			}
 			
-			String roomId = data.getRoom();
-			// 캐시 서비스를 통한 Room 조회 (DB 부하 감소)
-			Room room = cacheService.findRoomById(roomId).orElse(null);
-			if (room == null || !room.getParticipantIds().contains(socketUser.id())) {
-				recordError("room_access_denied");
-				client.sendEvent(ERROR, Map.of(
-						"code", "MESSAGE_ERROR",
-						"message", "채팅방 접근 권한이 없습니다."
-				));
+				String roomId = data.getRoom();
+				// 캐시 우선 조회 후, 참여자 없으면 한 번 더 DB에서 확인하여 캐시 갱신
+				Room room = cacheService.findRoomById(roomId).orElse(null);
+				boolean hasAccess = room != null && room.getParticipantIds().contains(socketUser.id());
+				if (!hasAccess) {
+					cacheService.evictRoom(roomId); // 참여자 목록 변경 가능성 반영
+					room = roomRepository.findById(roomId).orElse(null);
+					hasAccess = room != null && room.getParticipantIds().contains(socketUser.id());
+				}
+				
+				if (!hasAccess) {
+					recordError("room_access_denied");
+					client.sendEvent(ERROR, Map.of(
+							"code", "MESSAGE_ERROR",
+							"message", "채팅방 접근 권한이 없습니다."
+					));
 				timerSample.stop(createTimer("error", "room_access_denied"));
 				return;
 			}
@@ -169,17 +175,9 @@ public class ChatMessageHandler {
 			}
 			
 			// 브로드캐스트 먼저 실행 (실시간 응답 보장)
-			var messageResponse = createMessageResponse(message, sender);
 			socketIOServer.getRoomOperations(roomId)
-					.sendEvent(MESSAGE, messageResponse);
-
-			// Redis Pub/Sub으로 다른 서버에 브로드캐스트
-			redisPubSubService.publish(
-					RedisBroadcastMessage.EVENT_MESSAGE,
-					roomId,
-					messageResponse
-			);
-
+					.sendEvent(MESSAGE, createMessageResponse(message, sender));
+			
 			// MongoDB에 비동기 저장 (Virtual Thread가 처리)
 			CompletableFuture.runAsync(() -> {
 				try {

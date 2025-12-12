@@ -12,10 +12,9 @@ import com.ktb.chatapp.model.User;
 import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.repository.RoomRepository;
 import com.ktb.chatapp.repository.UserRepository;
+import com.ktb.chatapp.service.CacheService;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
 import com.ktb.chatapp.websocket.socketio.UserRooms;
-import com.ktb.chatapp.pubsub.RedisBroadcastMessage;
-import com.ktb.chatapp.pubsub.RedisPubSubService;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -44,7 +43,7 @@ public class RoomLeaveHandler {
     private final UserRepository userRepository;
     private final UserRooms userRooms;
     private final MessageResponseMapper messageResponseMapper;
-    private final RedisPubSubService redisPubSubService;
+    private final CacheService cacheService;
     
     @OnEvent(LEAVE_ROOM)
     public void handleLeaveRoom(SocketIOClient client, String roomId) {
@@ -71,6 +70,7 @@ public class RoomLeaveHandler {
             }
             
             roomRepository.removeParticipant(roomId, userId);
+            cacheService.evictRoom(roomId); // 참여자 변경 즉시 캐시 무효화
             
             client.leaveRoom(roomId);
             userRooms.remove(userId, roomId);
@@ -81,20 +81,11 @@ public class RoomLeaveHandler {
             
             sendSystemMessage(roomId, userName + "님이 퇴장하였습니다.");
             broadcastParticipantList(roomId);
-
-            var userLeftData = Map.of(
-                    "userId", userId,
-                    "userName", userName
-            );
             socketIOServer.getRoomOperations(roomId)
-                    .sendEvent(USER_LEFT, userLeftData);
-
-            // Redis Pub/Sub으로 다른 서버에 퇴장 알림 브로드캐스트
-            redisPubSubService.publish(
-                    RedisBroadcastMessage.EVENT_USER_LEFT,
-                    roomId,
-                    userLeftData
-            );
+                    .sendEvent(USER_LEFT, Map.of(
+                            "userId", userId,
+                            "userName", userName
+                    ));
             
         } catch (Exception e) {
             log.error("Error handling leaveRoom", e);
@@ -121,13 +112,6 @@ public class RoomLeaveHandler {
             socketIOServer.getRoomOperations(roomId)
                     .sendEvent(MESSAGE, response);
 
-            // Redis Pub/Sub으로 다른 서버에 시스템 메시지 브로드캐스트
-            redisPubSubService.publish(
-                    RedisBroadcastMessage.EVENT_ROOM_LEAVE,
-                    roomId,
-                    response
-            );
-
         } catch (Exception e) {
             log.error("Error sending system message", e);
         }
@@ -138,7 +122,7 @@ public class RoomLeaveHandler {
         if (roomOpt.isEmpty()) {
             return;
         }
-
+        
         var participantList = roomOpt.get()
                 .getParticipantIds()
                 .stream()
@@ -147,20 +131,13 @@ public class RoomLeaveHandler {
                 .map(Optional::get)
                 .map(UserResponse::from)
                 .toList();
-
+        
         if (participantList.isEmpty()) {
             return;
         }
-
+        
         socketIOServer.getRoomOperations(roomId)
                 .sendEvent(PARTICIPANTS_UPDATE, participantList);
-
-        // Redis Pub/Sub으로 다른 서버에 참가자 업데이트 브로드캐스트
-        redisPubSubService.publish(
-                RedisBroadcastMessage.EVENT_PARTICIPANTS_UPDATE,
-                roomId,
-                participantList
-        );
     }
 
     private SocketUser getUserDto(SocketIOClient client) {

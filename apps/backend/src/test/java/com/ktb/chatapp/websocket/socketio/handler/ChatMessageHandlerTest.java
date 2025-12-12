@@ -11,6 +11,7 @@ import com.ktb.chatapp.model.Room;
 import com.ktb.chatapp.model.User;
 import com.ktb.chatapp.repository.FileRepository;
 import com.ktb.chatapp.repository.MessageRepository;
+import com.ktb.chatapp.repository.RoomRepository;
 import com.ktb.chatapp.util.BannedWordChecker;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
 import com.ktb.chatapp.websocket.socketio.ai.AiService;
@@ -19,7 +20,6 @@ import com.ktb.chatapp.service.SessionService;
 import com.ktb.chatapp.service.SessionValidationResult;
 import com.ktb.chatapp.service.RateLimitService;
 import com.ktb.chatapp.service.RateLimitCheckResult;
-import com.ktb.chatapp.pubsub.RedisPubSubService;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,7 +48,7 @@ class ChatMessageHandlerTest {
     @Mock private BannedWordChecker bannedWordChecker;
     @Mock private RateLimitService rateLimitService;
     @Mock private MessageRepository messageRepository;
-    @Mock private RedisPubSubService redisPubSubService;
+    @Mock private RoomRepository roomRepository;
 
     @Mock private SocketIOClient client;
     @Mock private BroadcastOperations broadcastOperations;
@@ -64,7 +64,7 @@ class ChatMessageHandlerTest {
         chatMessageHandler = new ChatMessageHandler(
                 socketIOServer, cacheService, fileRepository,
                 aiService, sessionService, bannedWordChecker, rateLimitService,
-                meterRegistry, messageRepository, redisPubSubService
+                meterRegistry, messageRepository, roomRepository
         );
     }
 

@@ -8,6 +8,7 @@ import com.ktb.chatapp.model.User;
 import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.repository.RoomRepository;
 import com.ktb.chatapp.repository.UserRepository;
+import com.ktb.chatapp.service.CacheService;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.function.Function;
@@ -31,6 +32,7 @@ public class RoomService {
     private final MessageRepository messageRepository;
     private final PasswordEncoder passwordEncoder;
     private final ApplicationEventPublisher eventPublisher;
+    private final CacheService cacheService;
 
     public RoomsResponse getAllRoomsWithPagination(
             com.ktb.chatapp.dto.PageRequest pageRequest) {
@@ -132,6 +134,7 @@ public class RoomService {
         }
 
         Room savedRoom = roomRepository.save(room);
+        cacheService.evictRoom(savedRoom.getId()); // 참여자 목록 최신화
 
         try {
             RoomResponse roomResponse = mapToRoomResponse(savedRoom);
@@ -166,6 +169,7 @@ public class RoomService {
         if (!room.getParticipantIds().contains(user.getId())) {
             room.getParticipantIds().add(user.getId());
             room = roomRepository.save(room);
+            cacheService.evictRoom(roomId); // 참여자 변경 시 캐시 무효화
         }
 
         try {
