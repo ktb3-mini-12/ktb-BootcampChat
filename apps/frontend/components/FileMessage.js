@@ -1,14 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
-import Image from "next/image";
 import {
   PdfIcon as FileText,
   ImageIcon as ImageIcon,
   MovieIcon as Film,
   FileIcon as Music,
-  ErrorCircleIcon as AlertCircle,
-  FileIcon,
 } from "@vapor-ui/icons";
-import { Button, Callout, VStack, HStack } from "@vapor-ui/core";
+import { VStack, HStack } from "@vapor-ui/core";
 import CustomAvatar from "./CustomAvatar";
 import MessageContent from "./MessageContent";
 import MessageActions from "./MessageActions";
@@ -32,11 +29,13 @@ const FileMessage = ({
   const messageDomRef = useRef(null);
   useEffect(() => {
     if (msg?.file) {
-      const url = fileService.getPreviewUrl(msg.file, user?.token, user?.sessionId, true);
+      // S3 public URL이 있으면 직접 사용, 없으면 기존 방식 fallback
+      const url = msg.file.url || fileService.getPreviewUrl(msg.file, user?.token, user?.sessionId, true);
       setPreviewUrl(url);
       console.debug("Preview URL generated:", {
         filename: msg.file.filename,
         url,
+        isS3: !!msg.file.url,
       });
     }
   }, [msg?.file, user?.token, user?.sessionId]);
@@ -106,27 +105,31 @@ const FileMessage = ({
     setError(null);
 
     try {
-      if (!msg.file?.filename) {
+      if (!msg.file?.filename && !msg.file?.url) {
         throw new Error("파일 정보가 없습니다.");
       }
 
-      if (!user?.token || !user?.sessionId) {
-        throw new Error("인증 정보가 없습니다.");
+      // S3 public URL이 있으면 직접 다운로드
+      let downloadUrl;
+      if (msg.file.url) {
+        downloadUrl = msg.file.url;
+      } else {
+        if (!user?.token || !user?.sessionId) {
+          throw new Error("인증 정보가 없습니다.");
+        }
+        const baseUrl = fileService.getFileUrl(msg.file.filename, false);
+        downloadUrl = `${baseUrl}?token=${encodeURIComponent(user?.token)}&sessionId=${encodeURIComponent(
+          user?.sessionId
+        )}&download=true`;
       }
 
-      const baseUrl = fileService.getFileUrl(msg.file.filename, false);
-      const authenticatedUrl = `${baseUrl}?token=${encodeURIComponent(user?.token)}&sessionId=${encodeURIComponent(
-        user?.sessionId
-      )}&download=true`;
-
-      const iframe = document.createElement("iframe");
-      iframe.style.display = "none";
-      iframe.src = authenticatedUrl;
-      document.body.appendChild(iframe);
-
-      setTimeout(() => {
-        document.body.removeChild(iframe);
-      }, 5000);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = msg.file.originalname || msg.file.filename;
+      link.target = "_blank";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     } catch (error) {
       console.error("File download error:", error);
       setError(error.message || "파일 다운로드 중 오류가 발생했습니다.");
@@ -139,20 +142,25 @@ const FileMessage = ({
     setError(null);
 
     try {
-      if (!msg.file?.filename) {
+      if (!msg.file?.filename && !msg.file?.url) {
         throw new Error("파일 정보가 없습니다.");
       }
 
-      if (!user?.token || !user?.sessionId) {
-        throw new Error("인증 정보가 없습니다.");
+      // S3 public URL이 있으면 직접 열기
+      let viewUrl;
+      if (msg.file.url) {
+        viewUrl = msg.file.url;
+      } else {
+        if (!user?.token || !user?.sessionId) {
+          throw new Error("인증 정보가 없습니다.");
+        }
+        const baseUrl = fileService.getFileUrl(msg.file.filename, true);
+        viewUrl = `${baseUrl}?token=${encodeURIComponent(user?.token)}&sessionId=${encodeURIComponent(
+          user?.sessionId
+        )}`;
       }
 
-      const baseUrl = fileService.getFileUrl(msg.file.filename, true);
-      const authenticatedUrl = `${baseUrl}?token=${encodeURIComponent(user?.token)}&sessionId=${encodeURIComponent(
-        user?.sessionId
-      )}`;
-
-      const newWindow = window.open(authenticatedUrl, "_blank");
+      const newWindow = window.open(viewUrl, "_blank");
       if (!newWindow) {
         throw new Error("팝업이 차단되었습니다. 팝업 차단을 해제해주세요.");
       }
@@ -165,7 +173,7 @@ const FileMessage = ({
 
   const renderImagePreview = (originalname) => {
     try {
-      if (!msg?.file?.filename) {
+      if (!msg?.file?.filename && !msg?.file?.url) {
         return (
           <div className="flex items-center justify-center h-full bg-gray-100">
             <ImageIcon className="w-8 h-8 text-gray-400" />
@@ -173,19 +181,23 @@ const FileMessage = ({
         );
       }
 
-      if (!user?.token || !user?.sessionId) {
-        throw new Error("인증 정보가 없습니다.");
+      // S3 public URL 사용 (인증 불필요)
+      let imageUrl;
+      if (msg.file.url) {
+        imageUrl = msg.file.url;
+      } else {
+        if (!user?.token || !user?.sessionId) {
+          throw new Error("인증 정보가 없습니다.");
+        }
+        imageUrl = fileService.getPreviewUrl(msg.file, user?.token, user?.sessionId, true);
       }
-
-      const previewUrl = fileService.getPreviewUrl(msg.file, user?.token, user?.sessionId, true);
 
       return (
         <div className="bg-transparent-pattern">
-          <Image
-            src={previewUrl}
+          {/* S3 URL은 외부 URL이므로 img 태그 사용 (Next.js Image는 외부 도메인 설정 필요) */}
+          <img
+            src={imageUrl}
             alt={originalname}
-            width={400}
-            height={400}
             className="max-w-[400px] max-h-[400px] object-cover object-center rounded-md"
             onLoad={() => {
               console.debug("Image loaded successfully:", originalname);
@@ -194,10 +206,8 @@ const FileMessage = ({
               console.error("Image load error:", {
                 error: e.error,
                 originalname,
+                url: imageUrl,
               });
-              // NOTE: next/image's onError doesn't receive the event target directly
-              // For simplicity, we're just setting an error state.
-              // A more complex solution might involve a wrapper component.
               setError("이미지를 불러올 수 없습니다.");
             }}
             loading="lazy"
@@ -249,7 +259,7 @@ const FileMessage = ({
                 controls
                 preload="metadata"
                 aria-label={`${originalname} 비디오`}
-                crossOrigin="use-credentials"
+                crossOrigin={msg.file.url ? "anonymous" : "use-credentials"}
               >
                 <source src={previewUrl} type={mimetype} />
                 <track kind="captions" />
@@ -290,7 +300,7 @@ const FileMessage = ({
                 controls
                 preload="metadata"
                 aria-label={`${originalname} 오디오`}
-                crossOrigin="use-credentials"
+                crossOrigin={msg.file.url ? "anonymous" : "use-credentials"}
               >
                 <source src={previewUrl} type={mimetype} />
                 오디오를 재생할 수 없습니다.

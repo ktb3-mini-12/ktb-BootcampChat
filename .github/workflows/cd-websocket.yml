@@ -8,12 +8,11 @@ on:
       - '.github/workflows/cd-websocket.yml'
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/backend
-
     steps:
       - uses: actions/checkout@v4
 
@@ -23,30 +22,80 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
-      - run: ./mvnw clean package -DskipTests
+      - name: Build JAR
+        run: ./mvnw clean package -DskipTests
 
-      - name: Deploy to EC2
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ws-jar
+          path: apps/backend/target/ktb-chat-backend-0.0.1-SNAPSHOT.jar
+
+      - name: Upload control script
+        uses: actions/upload-artifact@v4
+        with:
+          name: ws-control-script
+          path: apps/backend/app-control.sh
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - host: WS_HOST_1
+            name: ws-1
+          - host: WS_HOST_2
+            name: ws-2
+          - host: WS_HOST_3
+            name: ws-3
+          - host: WS_HOST_4
+            name: ws-4
+          - host: WS_HOST_5
+            name: ws-5
+          - host: WS_HOST_6
+            name: ws-6
+      fail-fast: false
+    steps:
+      - name: Download JAR artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ws-jar
+
+      - name: Download control script
+        uses: actions/download-artifact@v4
+        with:
+          name: ws-control-script
+
+      - name: Deploy to ${{ matrix.name }}
         env:
           SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
-          HOST: ${{ secrets.WS_HOST }}
+          HOST: ${{ secrets[matrix.host] }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
+          if [ -z "$HOST" ]; then
+            echo "::warning::${{ matrix.host }} not configured, skipping"
+            exit 0
+          fi
+
           echo "$SSH_KEY" > key.pem
           chmod 600 key.pem
+          trap "rm -f key.pem" EXIT
 
           ssh -i key.pem -o StrictHostKeyChecking=no ubuntu@$HOST "mkdir -p /home/ubuntu/ktb-chat-ws/target /home/ubuntu/ktb-chat-ws/logs"
 
           scp -i key.pem -o StrictHostKeyChecking=no \
-            target/ktb-chat-backend-0.0.1-SNAPSHOT.jar \
+            ktb-chat-backend-0.0.1-SNAPSHOT.jar \
             ubuntu@$HOST:/home/ubuntu/ktb-chat-ws/target/
 
           scp -i key.pem -o StrictHostKeyChecking=no \
             app-control.sh \
             ubuntu@$HOST:/home/ubuntu/ktb-chat-ws/
 
-          ssh -i key.pem -o StrictHostKeyChecking=no ubuntu@$HOST << 'EOF'
-            cd /home/ubuntu/ktb-chat-ws
-            chmod +x app-control.sh
-            ./app-control.sh restart
-          EOF
-
-          rm key.pem
+          # AWS 자격 증명을 .env에 추가 (기존 값 덮어쓰기)
+          # 먼저 AWS 키를 서버로 안전하게 전송
+          ssh -i key.pem -o StrictHostKeyChecking=no ubuntu@$HOST "cd /home/ubuntu/ktb-chat-ws && grep -v '^AWS_ACCESS_KEY_ID=' .env 2>/dev/null | grep -v '^AWS_SECRET_ACCESS_KEY=' > .env.tmp || true"
+          ssh -i key.pem -o StrictHostKeyChecking=no ubuntu@$HOST "echo 'AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID' >> /home/ubuntu/ktb-chat-ws/.env.tmp"
+          ssh -i key.pem -o StrictHostKeyChecking=no ubuntu@$HOST "echo 'AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY' >> /home/ubuntu/ktb-chat-ws/.env.tmp"
+          ssh -i key.pem -o StrictHostKeyChecking=no ubuntu@$HOST "cd /home/ubuntu/ktb-chat-ws && mv .env.tmp .env && chmod +x app-control.sh && ./app-control.sh restart"
