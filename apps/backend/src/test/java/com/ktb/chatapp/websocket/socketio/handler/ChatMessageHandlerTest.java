@@ -20,6 +20,7 @@ import com.ktb.chatapp.service.SessionService;
 import com.ktb.chatapp.service.SessionValidationResult;
 import com.ktb.chatapp.service.RateLimitService;
 import com.ktb.chatapp.service.RateLimitCheckResult;
+import com.ktb.chatapp.pubsub.RedisPubSubService;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +33,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.Duration;
 import java.util.*;
 
+import static com.ktb.chatapp.pubsub.RedisBroadcastMessage.EVENT_MESSAGE;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -49,6 +51,7 @@ class ChatMessageHandlerTest {
     @Mock private RateLimitService rateLimitService;
     @Mock private MessageRepository messageRepository;
     @Mock private RoomRepository roomRepository;
+    @Mock private RedisPubSubService redisPubSubService;
 
     @Mock private SocketIOClient client;
     @Mock private BroadcastOperations broadcastOperations;
@@ -64,7 +67,7 @@ class ChatMessageHandlerTest {
         chatMessageHandler = new ChatMessageHandler(
                 socketIOServer, cacheService, fileRepository,
                 aiService, sessionService, bannedWordChecker, rateLimitService,
-                meterRegistry, messageRepository, roomRepository
+                meterRegistry, messageRepository, roomRepository, redisPubSubService
         );
     }
 
@@ -109,6 +112,74 @@ class ChatMessageHandlerTest {
 
         // then
         verify(broadcastOperations).sendEvent(eq("message"), any(MessageResponse.class));
+        verify(redisPubSubService).publish(eq(EVENT_MESSAGE), eq(roomId), any(MessageResponse.class));
         verify(messageRepository).save(any());
+    }
+
+    @Test
+    @DisplayName("null 데이터 전송 시 에러 반환")
+    void handleChatMessage_NullData_ReturnsError() {
+        // when
+        chatMessageHandler.handleChatMessage(client, null);
+
+        // then
+        verify(client).sendEvent(eq("error"), any(Map.class));
+        verifyNoInteractions(redisPubSubService);
+    }
+
+    @Test
+    @DisplayName("세션이 없는 경우 에러 반환")
+    void handleChatMessage_NoSession_ReturnsError() {
+        // given
+        when(client.get("user")).thenReturn(null);
+
+        ChatMessageRequest request = new ChatMessageRequest("room1", "text", "Hello", null, null);
+
+        // when
+        chatMessageHandler.handleChatMessage(client, request);
+
+        // then
+        verify(client).sendEvent(eq("error"), any(Map.class));
+        verifyNoInteractions(redisPubSubService);
+    }
+
+    @Test
+    @DisplayName("금칙어 포함 메시지 전송 시 에러 반환")
+    void handleChatMessage_BannedWord_ReturnsError() {
+        // given
+        String roomId = "room1";
+        String userId = "user1";
+
+        ChatMessageRequest request = new ChatMessageRequest(roomId, "text", "금칙어포함", null, null);
+        SocketUser socketUser = new SocketUser(userId, "Tester", "test@example.com", "session1");
+
+        User user = new User();
+        user.setId(userId);
+        user.setName("Tester");
+
+        Room room = new Room();
+        room.setId(roomId);
+        room.setParticipantIds(Set.of(userId));
+
+        when(client.get("user")).thenReturn(socketUser);
+
+        SessionValidationResult validResult = mock(SessionValidationResult.class);
+        when(validResult.isValid()).thenReturn(true);
+        when(sessionService.validateSession(anyString(), anyString())).thenReturn(validResult);
+
+        RateLimitCheckResult limitResult = new RateLimitCheckResult(true, 10, 10, 0, 0, 1);
+        when(rateLimitService.checkRateLimit(anyString(), anyInt(), any(Duration.class)))
+                .thenReturn(limitResult);
+
+        when(cacheService.findUserById(userId)).thenReturn(Optional.of(user));
+        when(cacheService.findRoomById(roomId)).thenReturn(Optional.of(room));
+        when(bannedWordChecker.containsBannedWord(anyString())).thenReturn(true);
+
+        // when
+        chatMessageHandler.handleChatMessage(client, request);
+
+        // then
+        verify(client).sendEvent(eq("error"), any(Map.class));
+        verifyNoInteractions(redisPubSubService);
     }
 }

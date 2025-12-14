@@ -20,6 +20,8 @@ import com.ktb.chatapp.service.SessionValidationResult;
 import com.ktb.chatapp.service.RateLimitService;
 import com.ktb.chatapp.service.RateLimitCheckResult;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
+import com.ktb.chatapp.pubsub.RedisBroadcastMessage;
+import com.ktb.chatapp.pubsub.RedisPubSubService;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -50,6 +52,7 @@ public class ChatMessageHandler {
 	private final MeterRegistry meterRegistry;
 	private final MessageRepository messageRepository;
 	private final RoomRepository roomRepository;
+	private final RedisPubSubService redisPubSubService;
 	
 	// Metrics 캐시 (매번 등록하지 않고 재사용)
 	private final Map<String, Timer> timerCache = new ConcurrentHashMap<>();
@@ -175,9 +178,17 @@ public class ChatMessageHandler {
 			}
 			
 			// 브로드캐스트 먼저 실행 (실시간 응답 보장)
+			MessageResponse messageResponse = createMessageResponse(message, sender);
 			socketIOServer.getRoomOperations(roomId)
-					.sendEvent(MESSAGE, createMessageResponse(message, sender));
-			
+					.sendEvent(MESSAGE, messageResponse);
+
+			// Redis Pub/Sub으로 다른 서버에 브로드캐스트 (멀티 서버 환경)
+			redisPubSubService.publish(
+					RedisBroadcastMessage.EVENT_MESSAGE,
+					roomId,
+					messageResponse
+			);
+
 			// MongoDB에 비동기 저장 (Virtual Thread가 처리)
 			CompletableFuture.runAsync(() -> {
 				try {
