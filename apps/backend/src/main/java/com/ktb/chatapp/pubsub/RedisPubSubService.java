@@ -88,8 +88,9 @@ public class RedisPubSubService {
             );
 
             // String으로 직렬화하여 발행 (StringCodec 사용)
+            // 동기 발행으로 변경하여 메시지 전파 보장
             String messageJson = objectMapper.writeValueAsString(message);
-            topic.publishAsync(messageJson);
+            topic.publish(messageJson);
             log.debug("Published to Redis - eventType: {}, roomId: {}, serverId: {}",
                 eventType, roomId, serverId);
         } catch (JsonProcessingException e) {
