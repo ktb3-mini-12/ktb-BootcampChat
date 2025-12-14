@@ -54,5 +54,8 @@ yarn-error.log*
 .cache/
 *.tsbuildinfo
 
-# Local documentation (not tracked)
+# Local documentation
 docs/
+
+# Claude Code local settings
+.claude/
