@@ -390,7 +390,7 @@
       },
       "targets": [
         {
-          "expr": "avg(process_cpu_usage{application=\"ktb-chat-api\"}) * 100",
+          "expr": "avg(system_cpu_usage{application=\"ktb-chat-api\"}) * 100",
           "legendFormat": "CPU",
           "refId": "A"
         }
@@ -438,7 +438,7 @@
       },
       "targets": [
         {
-          "expr": "process_cpu_usage{application=\"ktb-chat-api\"} * 100",
+          "expr": "system_cpu_usage{application=\"ktb-chat-api\"} * 100",
           "legendFormat": "{{instance}}",
           "refId": "A"
         }
@@ -486,7 +486,7 @@
       },
       "targets": [
         {
-          "expr": "jvm_memory_used_bytes{application=\"ktb-chat-api\", area=\"heap\"} / 1024 / 1024",
+          "expr": "sum by (instance) (jvm_memory_used_bytes{application=\"ktb-chat-api\", area=\"heap\"}) / 1024 / 1024",
           "legendFormat": "{{instance}}",
           "refId": "A"
         }
@@ -620,7 +620,7 @@
       },
       "targets": [
         {
-          "expr": "avg(process_cpu_usage{application=\"ktb-chat-websocket\"}) * 100",
+          "expr": "avg(system_cpu_usage{application=\"ktb-chat-websocket\"}) * 100",
           "legendFormat": "CPU",
           "refId": "A"
         }
@@ -668,7 +668,7 @@
       },
       "targets": [
         {
-          "expr": "process_cpu_usage{application=\"ktb-chat-websocket\"} * 100",
+          "expr": "system_cpu_usage{application=\"ktb-chat-websocket\"} * 100",
           "legendFormat": "{{instance}}",
           "refId": "A"
         }
@@ -716,7 +716,7 @@
       },
       "targets": [
         {
-          "expr": "jvm_memory_used_bytes{application=\"ktb-chat-websocket\", area=\"heap\"} / 1024 / 1024",
+          "expr": "sum by (instance) (jvm_memory_used_bytes{application=\"ktb-chat-websocket\", area=\"heap\"}) / 1024 / 1024",
           "legendFormat": "{{instance}}",
           "refId": "A"
         }
