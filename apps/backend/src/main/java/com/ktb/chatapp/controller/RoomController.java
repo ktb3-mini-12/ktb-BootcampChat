@@ -284,15 +284,10 @@ public class RoomController {
         if (creator == null) {
             throw new RuntimeException("Creator not found for room " + room.getId());
         }
-        List<UserResponse> participantSummaries = room.getParticipantIds()
+        // findAllById로 N+1 문제 해결 (N번 쿼리 → 1번 쿼리)
+        List<UserResponse> participantSummaries = userRepository
+                .findAllById(room.getParticipantIds())
                 .stream()
-                .map(userRepository::findById).peek(optUser -> {
-                    if (optUser.isEmpty()) {
-                        log.warn("Participant not found: roomId={}, userId={}", room.getId(), optUser);
-                    }
-                })
-                .filter(Optional::isPresent)
-                .map(Optional::get)
                 .map(UserResponse::from)
                 .toList();
 		

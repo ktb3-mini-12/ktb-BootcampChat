@@ -123,12 +123,10 @@ public class RoomLeaveHandler {
             return;
         }
         
-        var participantList = roomOpt.get()
-                .getParticipantIds()
+        // findAllById로 N+1 문제 해결 (N번 쿼리 → 1번 쿼리)
+        var participantList = userRepository
+                .findAllById(roomOpt.get().getParticipantIds())
                 .stream()
-                .map(userRepository::findById)
-                .filter(Optional::isPresent)
-                .map(Optional::get)
                 .map(UserResponse::from)
                 .toList();
         

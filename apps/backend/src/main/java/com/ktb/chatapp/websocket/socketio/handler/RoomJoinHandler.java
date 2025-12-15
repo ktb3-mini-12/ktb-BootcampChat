@@ -103,12 +103,10 @@ public class RoomJoinHandler {
                 return;
             }
 
-            // 참가자 정보 조회
-            List<UserResponse> participants = roomOpt.get().getParticipantIds()
+            // 참가자 정보 조회 - findAllById로 N+1 문제 해결 (N번 쿼리 → 1번 쿼리)
+            List<UserResponse> participants = userRepository
+                    .findAllById(roomOpt.get().getParticipantIds())
                     .stream()
-                    .map(userRepository::findById)
-                    .filter(Optional::isPresent)
-                    .map(Optional::get)
                     .map(UserResponse::from)
                     .toList();
             
