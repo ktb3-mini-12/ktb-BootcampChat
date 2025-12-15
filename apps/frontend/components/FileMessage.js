@@ -388,6 +388,7 @@ const FileMessage = ({
               messageRef={messageDomRef}
               currentUserId={currentUser?._id || currentUser?.id}
               socketRef={socketRef}
+              roomId={room?._id || room?.id}
             />
           </HStack>
         </div>

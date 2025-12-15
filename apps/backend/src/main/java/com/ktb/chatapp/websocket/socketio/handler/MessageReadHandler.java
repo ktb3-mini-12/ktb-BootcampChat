@@ -52,12 +52,35 @@ public class MessageReadHandler {
             if (data == null || data.messageIds() == null || data.messageIds().isEmpty()) {
                 return;
             }
-            
-            String roomId = messageRepository.findById(data.messageIds().getFirst())
+
+            // 메시지에서 roomId 조회 (신뢰할 수 있는 소스)
+            String messageRoomId = messageRepository.findById(data.messageIds().getFirst())
                     .map(Message::getRoomId).orElse(null);
-            
-            if (roomId == null || roomId.isBlank()) {
-                client.sendEvent(ERROR, Map.of("message", "Invalid room"));
+
+            // roomId 결정: 메시지가 DB에 있으면 메시지의 roomId 사용, 없으면 request의 roomId 사용
+            // (메시지 브로드캐스트 후 비동기 저장으로 인한 Race Condition 대응)
+            String roomId;
+            if (messageRoomId != null && !messageRoomId.isBlank()) {
+                // 메시지가 DB에 있는 경우: 메시지의 roomId를 신뢰
+                roomId = messageRoomId;
+
+                // 보안 검증: 클라이언트가 보낸 roomId와 메시지의 실제 roomId가 일치하는지 확인
+                if (data.roomId() != null && !data.roomId().isBlank()
+                        && !data.roomId().equals(messageRoomId)) {
+                    log.warn("Room ID mismatch - client sent: {}, message belongs to: {}, userId: {}",
+                            data.roomId(), messageRoomId, userId);
+                    client.sendEvent(ERROR, Map.of("message", "Invalid room"));
+                    return;
+                }
+            } else if (data.roomId() != null && !data.roomId().isBlank()) {
+                // 메시지가 DB에 없는 경우 (Race Condition): request의 roomId 사용
+                // 이 경우 room 접근 권한 검증으로 보안 확보
+                roomId = data.roomId();
+                log.debug("Message not in DB yet, using client roomId - messageIds: {}, roomId: {}",
+                        data.messageIds(), roomId);
+            } else {
+                // roomId를 알 수 없는 경우 조용히 무시
+                log.debug("Cannot determine roomId for read status update - messageIds: {}", data.messageIds());
                 return;
             }
 

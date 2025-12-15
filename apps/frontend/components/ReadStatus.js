@@ -2,7 +2,7 @@ import React, { useMemo, useEffect, useState, useCallback, useRef } from 'react'
 import { ConfirmOutlineIcon } from '@vapor-ui/icons';
 import { Text, HStack } from '@vapor-ui/core';
 
-const ReadStatus = ({ 
+const ReadStatus = ({
   messageType = 'text',
   participants = [],
   readers = [],
@@ -10,7 +10,8 @@ const ReadStatus = ({
   socketRef = null,
   messageId = null,
   messageRef = null, // 메시지 요소의 ref 추가
-  currentUserId = null // 현재 사용자 ID 추가
+  currentUserId = null, // 현재 사용자 ID 추가
+  roomId = null // 채팅방 ID 추가 (Race Condition 방지)
 }) => {
   const [hasMarkedAsRead, setHasMarkedAsRead] = useState(false);
   const statusRef = useRef(null);
@@ -38,14 +39,16 @@ const ReadStatus = ({
 
   // 메시지를 읽음으로 표시하는 함수
   const markMessageAsRead = useCallback(async () => {
-    if (!messageId || !currentUserId || hasMarkedAsRead || 
+    if (!messageId || !currentUserId || !roomId || hasMarkedAsRead ||
         messageType === 'system' || !socketRef?.current) {
       return;
     }
 
     try {
       // Socket.IO를 통해 서버에 읽음 상태 전송
+      // roomId를 포함하여 Race Condition 방지 (메시지 저장 전 읽음 처리 요청 시)
       socketRef.current.emit('markMessagesAsRead', {
+        roomId,
         messageIds: [messageId]
       });
 
@@ -54,7 +57,7 @@ const ReadStatus = ({
     } catch (error) {
       console.error('Error marking message as read:', error);
     }
-  }, [messageId, currentUserId, hasMarkedAsRead, messageType, socketRef]);
+  }, [messageId, currentUserId, hasMarkedAsRead, messageType, socketRef, roomId]);
 
   // Intersection Observer 설정
   useEffect(() => {
