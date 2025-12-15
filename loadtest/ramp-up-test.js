@@ -175,6 +175,8 @@ class RampUpLoadTester {
       roomJoinsREST: 0,
       roomInfoFetches: 0,
       connected: 0,
+      peakConnected: 0,
+      peakActiveUsers: 0,
       disconnected: 0,
       disconnectedByServer: 0,
       disconnectedByClient: 0,
@@ -452,6 +454,15 @@ class RampUpLoadTester {
         this.metrics.connected++;
         this.activeUsers++;
         this.metrics.connectionTimes.push(connectionTime);
+
+        // Update peak values
+        if (this.metrics.connected > this.metrics.peakConnected) {
+          this.metrics.peakConnected = this.metrics.connected;
+        }
+        if (this.activeUsers > this.metrics.peakActiveUsers) {
+          this.metrics.peakActiveUsers = this.activeUsers;
+        }
+
         this.log('success', `User ${userId} (${user.name}) connected in ${connectionTime}ms`);
 
         // Step 4: WebSocket - Join Room
@@ -667,8 +678,11 @@ class RampUpLoadTester {
     table.push(
       ['Test Phase', phaseInfo, chalk.green('Rooms Created'), this.metrics.roomsCreated],
       ['Elapsed Time', `${elapsed}s`, chalk.green('Users Created'), this.metrics.usersCreated],
-      ...(timeRemaining ? [['Time Remaining', timeRemaining, chalk.green('Active Users'), this.activeUsers]] : [['', '', chalk.green('Active Users'), this.activeUsers]]),
-      ...(this.backpressureCount > 0 ? [[chalk.yellow('Backpressure Count'), `${this.backpressureCount}/${this.maxBackpressureCount}`, chalk.green('Connected'), this.metrics.connected]] : [['', '', chalk.green('Connected'), this.metrics.connected]]),
+      [chalk.bold.magenta('Target Users'), chalk.bold.magenta(this.config.maxUsers), chalk.green('Active Users'), this.activeUsers],
+      [chalk.bold.magenta('Peak Connected'), chalk.bold.magenta(this.metrics.peakConnected), chalk.green('Connected'), this.metrics.connected],
+      [chalk.bold.magenta('Peak Active'), chalk.bold.magenta(this.metrics.peakActiveUsers), '', ''],
+      ...(timeRemaining ? [['Time Remaining', timeRemaining, '', '']] : []),
+      ...(this.backpressureCount > 0 ? [[chalk.yellow('Backpressure Count'), `${this.backpressureCount}/${this.maxBackpressureCount}`, '', '']] : []),
       ['───────────────', '──────────', '───────────────', '──────────'],
       [chalk.cyan('Room Joins (REST)'), this.metrics.roomJoinsREST, chalk.green('Messages Sent'), this.metrics.messagesSent],
       [chalk.cyan('Room Info Fetches'), this.metrics.roomInfoFetches, chalk.green('Messages Received'), this.metrics.messagesReceived],
