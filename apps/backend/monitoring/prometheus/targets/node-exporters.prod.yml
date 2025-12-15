@@ -40,7 +40,7 @@
 
 # Monitoring Server
 - targets:
-    - '10.0.102.66:9100'
+    - '43.200.175.169:9100'
   labels:
     environment: 'production'
     region: 'ap-northeast-2'
