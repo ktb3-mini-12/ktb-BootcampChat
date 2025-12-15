@@ -112,6 +112,8 @@ const { hideBin } = require('yargs/helpers');
 const chalk = require('chalk');
 const Table = require('cli-table3');
 const { v4: uuidv4 } = require('uuid');
+const fs = require('fs');
+const path = require('path');
 
 // Parse command line arguments
 const argv = yargs(hideBin(process.argv))
@@ -162,6 +164,17 @@ const argv = yargs(hideBin(process.argv))
     type: 'string',
     default: null
   })
+  .option('log-file', {
+    alias: 'l',
+    description: 'Path to write activity logs (default: logs/ramp-up-TIMESTAMP.log)',
+    type: 'string',
+    default: null
+  })
+  .option('no-log-file', {
+    description: 'Disable file logging',
+    type: 'boolean',
+    default: false
+  })
   .help()
   .alias('help', 'h')
   .argv;
@@ -169,6 +182,14 @@ const argv = yargs(hideBin(process.argv))
 class RampUpLoadTester {
   constructor(config) {
     this.config = config;
+
+    // Initialize log file stream
+    this.logStream = null;
+    this.logFilePath = null;
+    if (!config.noLogFile) {
+      this.initLogFile(config.logFile);
+    }
+
     this.metrics = {
       usersCreated: 0,
       roomsCreated: 0,
@@ -216,13 +237,57 @@ class RampUpLoadTester {
     this.maxBackpressureCount = 20; // Maximum allowed backpressure activations
   }
 
+  initLogFile(logFilePath) {
+    try {
+      // Create logs directory if it doesn't exist
+      const logsDir = path.join(__dirname, 'logs');
+      if (!fs.existsSync(logsDir)) {
+        fs.mkdirSync(logsDir, { recursive: true });
+      }
+
+      // Generate log file path if not provided
+      if (!logFilePath) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+        logFilePath = path.join(logsDir, `ramp-up-${timestamp}.log`);
+      }
+
+      this.logFilePath = logFilePath;
+      this.logStream = fs.createWriteStream(logFilePath, { flags: 'a' });
+
+      // Write header to log file
+      const header = `\n${'='.repeat(80)}\nKTB Chat Ramp-Up Load Test - Activity Log\nStarted: ${new Date().toISOString()}\nConfig: max-users=${this.config.maxUsers}, users/sec=${this.config.minUsersPerSecond}-${this.config.maxUsersPerSecond}\n${'='.repeat(80)}\n\n`;
+      this.logStream.write(header);
+
+    } catch (error) {
+      console.error(chalk.yellow(`Warning: Could not initialize log file: ${error.message}`));
+      this.logStream = null;
+    }
+  }
+
   log(level, message, ...args) {
     const timestamp = new Date().toISOString().substring(11, 19);
+    const fullTimestamp = new Date().toISOString();
     const formattedMessage = `[${timestamp}] ${message} ${args.join(' ')}`;
 
+    // Write to log file (with full timestamp)
+    if (this.logStream) {
+      const fileMessage = `[${fullTimestamp}] [${level.toUpperCase().padEnd(7)}] ${message} ${args.join(' ')}\n`;
+      this.logStream.write(fileMessage);
+    }
+
+    // Keep in memory buffer for console display
     this.logBuffer.push({ level, message: formattedMessage });
     if (this.logBuffer.length > this.maxLogLines) {
       this.logBuffer.shift();
+    }
+  }
+
+  closeLogFile() {
+    if (this.logStream) {
+      const footer = `\n${'='.repeat(80)}\nTest Ended: ${new Date().toISOString()}\n${'='.repeat(80)}\n`;
+      this.logStream.write(footer);
+      this.logStream.end();
+      this.logStream = null;
     }
   }
 
@@ -821,6 +886,10 @@ class RampUpLoadTester {
       clearInterval(this.metricsInterval);
       this.printMetrics();
       console.log(chalk.bold.red('\n✗ Test aborted due to excessive WebSocket connection failures!\n'));
+      if (this.logFilePath) {
+        console.log(chalk.gray(`📄 Activity log saved to: ${this.logFilePath}\n`));
+      }
+      this.closeLogFile();
       process.exit(1);
     }, 2000);
   }
@@ -841,6 +910,10 @@ class RampUpLoadTester {
       clearInterval(this.metricsInterval);
       this.printMetrics();
       console.log(chalk.bold.green('\n✓ Ramp-up load test completed!\n'));
+      if (this.logFilePath) {
+        console.log(chalk.gray(`📄 Activity log saved to: ${this.logFilePath}\n`));
+      }
+      this.closeLogFile();
       process.exit(0);
     }, 2000);
   }
@@ -857,6 +930,9 @@ class RampUpLoadTester {
     console.log(chalk.gray(`  API URL:                ${this.config.apiUrl}`));
     console.log(chalk.gray(`  Socket.IO URL:          ${this.config.socketUrl}`));
     console.log(chalk.gray(`  Strategy:               1 new room per second with ${minUsersPerSecond}-${maxUsersPerSecond} users`));
+    if (this.logFilePath) {
+      console.log(chalk.gray(`  Log File:               ${this.logFilePath}`));
+    }
     console.log('');
 
     // Create admin user for room creation
@@ -895,7 +971,9 @@ const tester = new RampUpLoadTester({
   maxUsersPerSecond: argv.maxUsersPerSecond,
   sustainDuration: argv.sustainDuration,
   messageIntervalMin: argv.messageIntervalMin,
-  messageIntervalMax: argv.messageIntervalMax
+  messageIntervalMax: argv.messageIntervalMax,
+  logFile: argv.logFile,
+  noLogFile: argv.noLogFile
 });
 
 tester.run().catch(error => {
