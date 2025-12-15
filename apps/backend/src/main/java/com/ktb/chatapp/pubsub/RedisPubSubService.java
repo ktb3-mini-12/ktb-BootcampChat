@@ -15,6 +15,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
+import java.util.Set;
+
+import com.ktb.chatapp.websocket.socketio.SocketUser;
 
 import static com.ktb.chatapp.pubsub.RedisBroadcastMessage.*;
 import static com.ktb.chatapp.websocket.socketio.SocketIOEvents.*;
@@ -100,6 +103,36 @@ public class RedisPubSubService {
     }
 
     /**
+     * 특정 사용자들에게만 메시지 발행 (Selective Unicast)
+     * O(N²) 브로드캐스트 대신 O(N) 타겟팅으로 성능 개선
+     */
+    public void publishToUsers(String eventType, String roomId, Set<String> targetUserIds, Object data) {
+        if (targetUserIds == null || targetUserIds.isEmpty()) {
+            return;
+        }
+
+        try {
+            // targetUserIds를 payload에 포함
+            Map<String, Object> wrappedData = Map.of(
+                "data", data,
+                "targetUserIds", targetUserIds
+            );
+            String payload = objectMapper.writeValueAsString(wrappedData);
+            RedisBroadcastMessage message = new RedisBroadcastMessage(
+                serverId, eventType, roomId, payload
+            );
+
+            String messageJson = objectMapper.writeValueAsString(message);
+            topic.publish(messageJson);
+            log.debug("Published to Redis (targeted) - eventType: {}, roomId: {}, targetUsers: {}",
+                eventType, roomId, targetUserIds.size());
+        } catch (JsonProcessingException e) {
+            log.error("Failed to serialize targeted message for Redis publish - eventType: {}, roomId: {}",
+                eventType, roomId, e);
+        }
+    }
+
+    /**
      * Redis에서 수신한 메시지 처리
      * 자신이 발행한 메시지는 무시 (이미 로컬에서 처리됨)
      */
@@ -116,13 +149,19 @@ public class RedisPubSubService {
 
         try {
             String socketEvent = mapToSocketEvent(message.eventType());
-            Object payload = deserializePayload(message.payload());
 
             // 특수 케이스: ROOM_CREATED는 room-list에 브로드캐스트
             if (EVENT_ROOM_CREATED.equals(message.eventType())) {
+                Object payload = deserializePayload(message.payload());
                 socketIOServer.getRoomOperations("room-list")
                     .sendEvent(socketEvent, payload);
-            } else {
+            }
+            // Selective Unicast: MESSAGES_READ는 타겟 사용자에게만 전송
+            else if (EVENT_MESSAGES_READ.equals(message.eventType())) {
+                handleTargetedMessage(message, socketEvent);
+            }
+            else {
+                Object payload = deserializePayload(message.payload());
                 socketIOServer.getRoomOperations(message.roomId())
                     .sendEvent(socketEvent, payload);
             }
@@ -131,6 +170,48 @@ public class RedisPubSubService {
                 socketEvent, message.roomId());
         } catch (Exception e) {
             log.error("Failed to handle Redis message - eventType: {}, roomId: {}",
+                message.eventType(), message.roomId(), e);
+        }
+    }
+
+    /**
+     * 타겟팅된 메시지 처리 (Selective Unicast)
+     * targetUserIds가 있으면 해당 사용자에게만 전송
+     */
+    private void handleTargetedMessage(RedisBroadcastMessage message, String socketEvent) {
+        try {
+            Map<String, Object> wrappedPayload = objectMapper.readValue(
+                message.payload(), new TypeReference<Map<String, Object>>() {});
+
+            Object targetUserIdsObj = wrappedPayload.get("targetUserIds");
+            Object actualData = wrappedPayload.get("data");
+
+            if (targetUserIdsObj instanceof java.util.List<?> targetList && actualData != null) {
+                Set<String> targetUserIds = new java.util.HashSet<>();
+                for (Object id : targetList) {
+                    if (id != null) {
+                        targetUserIds.add(id.toString());
+                    }
+                }
+
+                // 타겟 사용자에게만 전송
+                socketIOServer.getRoomOperations(message.roomId()).getClients().stream()
+                    .filter(client -> {
+                        SocketUser user = (SocketUser) client.get("user");
+                        return user != null && targetUserIds.contains(user.id());
+                    })
+                    .forEach(client -> client.sendEvent(socketEvent, actualData));
+
+                log.debug("Sent targeted message to {} users in room {}",
+                    targetUserIds.size(), message.roomId());
+            } else {
+                // targetUserIds가 없으면 일반 브로드캐스트
+                Object payload = deserializePayload(message.payload());
+                socketIOServer.getRoomOperations(message.roomId())
+                    .sendEvent(socketEvent, payload);
+            }
+        } catch (Exception e) {
+            log.error("Failed to handle targeted message - eventType: {}, roomId: {}",
                 message.eventType(), message.roomId(), e);
         }
     }
