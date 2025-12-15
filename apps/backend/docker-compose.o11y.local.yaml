@@ -1,0 +1,125 @@
+# 로컬에서 AWS 서버 모니터링용 docker-compose
+# 사용법: docker-compose -f docker-compose.o11y.local.yaml up -d
+#
+# ⚠️ 해커톤 기간 한정 설정
+#   - 서버 대수 고정(API 8, WS 10)으로 IP 하드코딩
+#   - 실무에서는 Service Discovery 사용 권장
+#   - Grafana 기본 비밀번호(admin/admin) - 로컬 전용
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: prometheus-ktb
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.dev.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules.yml:/etc/prometheus/rules.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--storage.tsdb.retention.time=7d'
+    networks:
+      - monitoring
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: grafana-ktb
+    restart: unless-stopped
+    ports:
+      - "3100:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3100
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning/datasources/prometheus.dev.yml:/etc/grafana/provisioning/datasources/prometheus.yml:ro
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - monitoring
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # MongoDB Exporter - AWS chat-db (43.201.95.23) 연결
+  mongodb-exporter:
+    image: percona/mongodb_exporter:0.47.1
+    container_name: mongodb-exporter-ktb
+    restart: unless-stopped
+    ports:
+      - "9216:9216"
+    command:
+      - '--mongodb.uri=mongodb://43.201.95.23:27017'
+      - '--collect-all'
+    networks:
+      - monitoring
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.1'
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9216/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Redis Exporter - AWS chat-db (43.201.95.23) 연결
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.80.0
+    container_name: redis-exporter-ktb
+    restart: unless-stopped
+    ports:
+      - "9121:9121"
+    environment:
+      - REDIS_ADDR=redis://43.201.95.23:6379
+    networks:
+      - monitoring
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: '0.1'
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9121/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  monitoring:
+    driver: bridge

@@ -1,3 +1,7 @@
+# ⚠️ 해커톤 기간 한정 설정
+# 서버 대수 고정(API 8, WS 10)으로 IP 하드코딩
+# 실무에서는 EC2 Service Discovery 또는 file_sd_configs 사용 권장
+
 global:
   scrape_interval: 15s
   scrape_timeout: 10s
@@ -7,41 +11,104 @@ rule_files:
   - '/etc/prometheus/rules.yml'
 
 scrape_configs:
+  # Prometheus 자기 자신
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
 
-  - job_name: 'spring-boot-app'
+  # Spring Boot API 서버 (8대) - Public IP
+  - job_name: 'spring-boot-api'
     metrics_path: '/actuator/prometheus'
     scrape_interval: 5s
     static_configs:
-      - targets: ['host.docker.internal:5001']
+      - targets:
+          - '13.124.176.155:5001'  # api-1
+          - '13.125.229.254:5001'  # api-2
+          - '43.201.26.231:5001'   # api-3
+          - '13.125.54.221:5001'   # api-4
+          - '15.164.216.50:5001'   # api-5
+          - '3.34.134.212:5001'    # api-6
+          - '13.125.255.160:5001'  # api-7
+          - '54.180.123.43:5001'   # api-8
         labels:
-          application: 'ktb-chat-backend'
-          environment: 'dev'
+          application: 'ktb-chat-api'
+          environment: 'production'
 
+  # Spring Boot WebSocket 서버 (10대) - Public IP
+  - job_name: 'spring-boot-websocket'
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 5s
+    static_configs:
+      - targets:
+          - '15.164.98.42:5001'    # ws-1
+          - '15.164.169.93:5001'   # ws-2
+          - '3.37.123.52:5001'     # ws-3
+          - '3.34.91.232:5001'     # ws-4
+          - '43.200.5.64:5001'     # ws-5
+          - '43.200.177.205:5001'  # ws-6
+          - '43.200.177.173:5001'  # ws-7
+          - '3.34.52.200:5001'     # ws-8
+          - '43.200.178.3:5001'    # ws-9
+          - '54.180.117.74:5001'   # ws-10
+        labels:
+          application: 'ktb-chat-websocket'
+          environment: 'production'
+
+  # MongoDB Exporter (로컬 Docker에서 AWS DB 연결)
   - job_name: 'mongodb'
     static_configs:
       - targets: ['mongodb-exporter:9216']
         labels:
-          environment: 'dev'
+          environment: 'production'
 
+  # Redis Exporter (로컬 Docker에서 AWS DB 연결)
   - job_name: 'redis'
     static_configs:
       - targets: ['redis-exporter:9121']
         labels:
-          environment: 'dev'
+          environment: 'production'
 
-  - job_name: 'cadvisor'
+  # Node Exporter - 모든 AWS 서버 (20대)
+  - job_name: 'node-exporter'
+    scrape_interval: 15s
     static_configs:
-      - targets: ['cadvisor:8080']
+      # Frontend (1대)
+      - targets:
+          - '13.209.99.174:9100'
         labels:
-          environment: 'dev'
-    metric_relabel_configs:
-      # Extract container name from container_label_com_docker_compose_service
-      - source_labels: [container_label_com_docker_compose_service]
-        target_label: container_name
-      # Extract container name from id (fallback)
-      - source_labels: [id]
-        regex: '/docker/([a-f0-9]+)'
-        target_label: container_id
+          cluster: 'frontend'
+          environment: 'production'
+      # API 서버 (8대)
+      - targets:
+          - '13.124.176.155:9100'
+          - '13.125.229.254:9100'
+          - '43.201.26.231:9100'
+          - '13.125.54.221:9100'
+          - '15.164.216.50:9100'
+          - '3.34.134.212:9100'
+          - '13.125.255.160:9100'
+          - '54.180.123.43:9100'
+        labels:
+          cluster: 'api'
+          environment: 'production'
+      # WebSocket 서버 (10대)
+      - targets:
+          - '15.164.98.42:9100'
+          - '15.164.169.93:9100'
+          - '3.37.123.52:9100'
+          - '3.34.91.232:9100'
+          - '43.200.5.64:9100'
+          - '43.200.177.205:9100'
+          - '43.200.177.173:9100'
+          - '3.34.52.200:9100'
+          - '43.200.178.3:9100'
+          - '54.180.117.74:9100'
+        labels:
+          cluster: 'websocket'
+          environment: 'production'
+      # DB 서버 (1대)
+      - targets:
+          - '43.201.95.23:9100'
+        labels:
+          cluster: 'database'
+          environment: 'production'
