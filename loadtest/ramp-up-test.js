@@ -196,7 +196,6 @@ class RampUpLoadTester {
       roomJoinsREST: 0,
       roomInfoFetches: 0,
       connected: 0,
-      peakConnected: 0,
       peakActiveUsers: 0,
       disconnected: 0,
       disconnectedByServer: 0,
@@ -520,10 +519,7 @@ class RampUpLoadTester {
         this.activeUsers++;
         this.metrics.connectionTimes.push(connectionTime);
 
-        // Update peak values
-        if (this.metrics.connected > this.metrics.peakConnected) {
-          this.metrics.peakConnected = this.metrics.connected;
-        }
+        // Update peak value
         if (this.activeUsers > this.metrics.peakActiveUsers) {
           this.metrics.peakActiveUsers = this.activeUsers;
         }
@@ -587,6 +583,7 @@ class RampUpLoadTester {
 
       socket.on('disconnect', (reason, desc) => {
         this.metrics.disconnected++;
+        this.metrics.connected = Math.max(0, this.metrics.connected - 1);
         this.activeUsers = Math.max(0, this.activeUsers - 1);
         const socketIndex = this.sockets.indexOf(socket);
         if (socketIndex !== -1) {
@@ -595,16 +592,16 @@ class RampUpLoadTester {
         // reason 별 메트릭 세분화
         switch (reason) {
           case 'io server disconnect':
-            this.metrics.disconnectedByServer = (this.metrics.disconnectedByServer || 0) + 1;
+            this.metrics.disconnectedByServer++;
             break;
           case 'io client disconnect':
-            this.metrics.disconnectedByClient = (this.metrics.disconnectedByClient || 0) + 1;
+            this.metrics.disconnectedByClient++;
             break;
           case 'ping timeout':
-            this.metrics.disconnectedByPingTimeout = (this.metrics.disconnectedByPingTimeout || 0) + 1;
+            this.metrics.disconnectedByPingTimeout++;
             break;
           default:
-            this.metrics.disconnectedOther = (this.metrics.disconnectedOther || 0) + 1;
+            this.metrics.disconnectedOther++;
         }
         
         let descStr;
@@ -744,8 +741,7 @@ class RampUpLoadTester {
       ['Test Phase', phaseInfo, chalk.green('Rooms Created'), this.metrics.roomsCreated],
       ['Elapsed Time', `${elapsed}s`, chalk.green('Users Created'), this.metrics.usersCreated],
       [chalk.bold.magenta('Target Users'), chalk.bold.magenta(this.config.maxUsers), chalk.green('Active Users'), this.activeUsers],
-      [chalk.bold.magenta('Peak Connected'), chalk.bold.magenta(this.metrics.peakConnected), chalk.green('Connected'), this.metrics.connected],
-      [chalk.bold.magenta('Peak Active'), chalk.bold.magenta(this.metrics.peakActiveUsers), '', ''],
+      [chalk.bold.magenta('Peak Active'), chalk.bold.magenta(this.metrics.peakActiveUsers), chalk.green('Connected'), this.metrics.connected],
       ...(timeRemaining ? [['Time Remaining', timeRemaining, '', '']] : []),
       ...(this.backpressureCount > 0 ? [[chalk.yellow('Backpressure Count'), `${this.backpressureCount}/${this.maxBackpressureCount}`, '', '']] : []),
       ['───────────────', '──────────', '───────────────', '──────────'],
