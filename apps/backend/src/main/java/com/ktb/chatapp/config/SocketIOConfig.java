@@ -44,11 +44,6 @@ public class SocketIOConfig {
         socketConfig.setTcpReceiveBufferSize(4096);
         config.setSocketConfig(socketConfig);
 
-        // Worker/Boss Thread 튜닝 (기본값: boss=1, worker=CPU*2)
-        // t3.small(2 vCPU)에서 기본값은 worker=4개뿐이라 병목 발생
-        config.setBossThreads(2);       // 연결 수락 병렬화
-        config.setWorkerThreads(8);     // 이벤트 처리 2배 증가
-
         config.setOrigin("*");
 
         // Socket.IO settings
